@@ -1,0 +1,10 @@
+{
+  "name": "ai-placement-dashboard-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Skill Bay Academy Backend",
+  "scripts": {
+    "dev": "uvicorn app.main:app --reload --port 8000",
+    "start": "python run.py"
+  }
+}

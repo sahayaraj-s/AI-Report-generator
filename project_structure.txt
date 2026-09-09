@@ -1,0 +1,92 @@
+ai-placement-dashboard/
+├── .vscode/
+│   └── settings.json
+├── README.md
+├── backend/
+│   ├── .env
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── .vscode/
+│   │   └── settings.json
+│   ├── README.md
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── main.py
+│   │   ├── models.py
+│   │   ├── routers/
+│   │   │   ├── __init__.py
+│   │   │   ├── admin.py
+│   │   │   ├── ai.py
+│   │   │   ├── auth_router.py
+│   │   │   ├── dashboard.py
+│   │   │   ├── jobs.py
+│   │   │   ├── reports.py
+│   │   │   ├── students.py
+│   │   │   └── upload.py
+│   │   ├── schemas.py
+│   │   └── services/
+│   │       ├── __init__.py
+│   │       ├── ai_service.py
+│   │       ├── chat_service.py
+│   │       ├── job_roles.py
+│   │       ├── pipeline.py
+│   │       ├── scoring.py
+│   │       └── upload_processing.py
+│   ├── package.json
+│   ├── placement.db
+│   ├── pyrightconfig.json
+│   ├── requirements.txt
+│   ├── run.py
+│   ├── test_all_endpoints.py
+│   └── test_api.py
+├── frontend/
+│   ├── .env
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── README.md
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public/
+│   │   └── logo.png
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── assets/
+│   │   ├── components/
+│   │   │   ├── Layout.jsx
+│   │   │   ├── MiniChatbot.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   ├── Topbar.jsx
+│   │   │   └── ui/
+│   │   │       ├── Badge.jsx
+│   │   │       ├── Button.jsx
+│   │   │       ├── Card.jsx
+│   │   │       └── StatCard.jsx
+│   │   ├── context/
+│   │   │   ├── AuthContext.jsx
+│   │   │   └── ThemeContext.jsx
+│   │   ├── index.css
+│   │   ├── lib/
+│   │   │   ├── api.js
+│   │   │   └── firebase.js
+│   │   ├── main.jsx
+│   │   └── pages/
+│   │       ├── DashboardOverview.jsx
+│   │       ├── JobRoles.jsx
+│   │       ├── Login.jsx
+│   │       ├── Settings.jsx
+│   │       ├── SkillBayAI.jsx
+│   │       ├── StudentProfile.jsx
+│   │       ├── StudentsDirectory.jsx
+│   │       └── UploadStudentData.jsx
+│   ├── tailwind.config.js
+│   └── vite.config.js
+├── package.json
+├── pyrightconfig.json
+├── run_backend.bat
+└── run_frontend.bat

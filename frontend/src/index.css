@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── Light-mode palette ────────────────────────────── */
+    --surface-r: 248; --surface-g: 250; --surface-b: 252;
+    --surface-dim-r: 255; --surface-dim-g: 255; --surface-dim-b: 255;
+    --surface-low-r: 241; --surface-low-g: 245; --surface-low-b: 249;
+    --surface-container-r: 255; --surface-container-g: 255; --surface-container-b: 255;
+    --surface-high-r: 226; --surface-high-g: 232; --surface-high-b: 240;
+    --surface-border-r: 226; --surface-border-g: 232; --surface-border-b: 240;
+    --ink-r: 15; --ink-g: 23; --ink-b: 42;
+    --ink-muted-r: 71; --ink-muted-g: 85; --ink-muted-b: 105;
+    --ink-faint-r: 100; --ink-faint-g: 116; --ink-faint-b: 139;
+
+    --chart-grid: #E2E8F0;
+    --chart-text: #64748B;
+    --chart-tooltip-bg: #FFFFFF;
+    --chart-tooltip-border: #E2E8F0;
+    --card-shadow: 0 1px 3px 0 rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.05);
+    --scrollbar-thumb: #CBD5E1;
+  }
+
+  .dark {
+    /* ── Dark-mode palette ─────────────────────────────── */
+    --surface-r: 19; --surface-g: 18; --surface-b: 21;
+    --surface-dim-r: 14; --surface-dim-g: 13; --surface-dim-b: 16;
+    --surface-low-r: 27; --surface-low-g: 26; --surface-low-b: 30;
+    --surface-container-r: 32; --surface-container-g: 31; --surface-container-b: 36;
+    --surface-high-r: 43; --surface-high-g: 42; --surface-high-b: 48;
+    --surface-border-r: 52; --surface-border-g: 50; --surface-border-b: 58;
+    --ink-r: 237; --ink-g: 233; --ink-b: 238;
+    --ink-muted-r: 166; --ink-muted-g: 161; --ink-muted-b: 172;
+    --ink-faint-r: 113; --ink-faint-g: 108; --ink-faint-b: 122;
+
+    --chart-grid: #34323A;
+    --chart-text: #716C7A;
+    --chart-tooltip-bg: #201F24;
+    --chart-tooltip-border: #34323A;
+    --card-shadow: 0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.5);
+    --scrollbar-thumb: #34323A;
+  }
+
+  body {
+    background-color: rgb(var(--surface-r) var(--surface-g) var(--surface-b));
+    color: rgb(var(--ink-r) var(--ink-g) var(--ink-b));
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }

@@ -1,0 +1,11 @@
+{
+  "name": "ai-placement-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && python run.py",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "npm run dev:frontend",
+    "start": "npm run dev:frontend"
+  }
+}
