@@ -113,6 +113,12 @@ export default function DashboardOverview() {
     setSelectedReadiness("");
   };
 
+  // Filter batch list to remove pure-year entries (e.g. "2024", "2025")
+  const filteredBatchList = useMemo(() => {
+    if (!data?.batch_list) return [];
+    return data.batch_list.filter((b) => !/^\d{4}$/.test(b.trim()));
+  }, [data?.batch_list]);
+
   // Filtered and sorted leaderboard / grid data
   const gridStudents = useMemo(() => {
     if (!data?.leaderboard) return [];
@@ -264,7 +270,7 @@ export default function DashboardOverview() {
                 className="w-full bg-surface-container border border-surface-border rounded-xl px-3 py-1.5 text-xs text-ink font-medium focus:outline-none focus:ring-2 focus:ring-brand-maroon/40"
               >
                 <option value="">All Batches</option>
-                {data?.batch_list?.map((b) => (
+                {filteredBatchList.map((b) => (
                   <option key={b} value={b}>
                     {b}
                   </option>
@@ -327,7 +333,7 @@ export default function DashboardOverview() {
           </div>
 
           {/* Quick Batch Filter Chips */}
-          {data?.batch_list?.length > 0 ? (
+          {filteredBatchList.length > 0 ? (
             <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-surface-border/60">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint mr-1">
                 Quick Chips:
@@ -342,7 +348,7 @@ export default function DashboardOverview() {
               >
                 All
               </button>
-              {data.batch_list.map((b) => (
+              {filteredBatchList.map((b) => (
                 <button
                   key={b}
                   onClick={() => setSelectedBatch(selectedBatch === b ? "" : b)}

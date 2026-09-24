@@ -6,10 +6,12 @@ import csv
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
+    HRFlowable,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -666,3 +668,275 @@ def institute_report_pdf(db: Session = Depends(get_db), admin=Depends(get_curren
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="institute_placement_audit.pdf"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# 6. Live Session Report (PDF & Image) — generated from live preview data
+# ---------------------------------------------------------------------------
+
+def _build_live_report_pdf(students: list, batch_name: str, course_name: str, effort: str) -> io.BytesIO:
+    """Build a styled PDF matching the sample template from live analysis data."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=1.5 * cm,
+        bottomMargin=1.8 * cm,
+        leftMargin=1.8 * cm,
+        rightMargin=1.8 * cm,
+    )
+    styles, title_style, h2, h3, body, small = _get_styles()
+
+    # Custom styles matching sample template
+    cover_title = ParagraphStyle(
+        "CoverTitle", parent=title_style,
+        fontSize=14, textColor=colors.white, alignment=TA_LEFT, spaceAfter=2,
+    )
+    cover_sub = ParagraphStyle(
+        "CoverSub", parent=title_style,
+        fontSize=8, textColor=colors.HexColor("#FFCCDE"), alignment=TA_LEFT,
+    )
+    section_head = ParagraphStyle(
+        "SectionHead", parent=styles["Normal"],
+        fontSize=8, fontName="Helvetica-Bold", textColor=BRAND_PRIMARY,
+        spaceBefore=8, spaceAfter=3,
+    )
+    cell_label = ParagraphStyle(
+        "CellLabel", parent=styles["Normal"],
+        fontSize=7, textColor=colors.HexColor("#64748B"), fontName="Helvetica",
+    )
+    cell_value = ParagraphStyle(
+        "CellValue", parent=styles["Normal"],
+        fontSize=8, textColor=colors.HexColor("#0F172A"), fontName="Helvetica-Bold",
+    )
+    kpi_num = ParagraphStyle(
+        "KpiNum", parent=styles["Normal"],
+        fontSize=16, textColor=BRAND_PRIMARY, fontName="Helvetica-Bold", alignment=TA_CENTER,
+    )
+    kpi_lab = ParagraphStyle(
+        "KpiLab", parent=styles["Normal"],
+        fontSize=7, textColor=colors.HexColor("#64748B"), alignment=TA_CENTER,
+    )
+    tbl_hdr = ParagraphStyle(
+        "TblHdr", parent=styles["Normal"],
+        fontSize=8, textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER,
+    )
+
+    total = len(students)
+    ready_count = sum(1 for s in students if s.get("placement_ready"))
+    avg_score = sum(s.get("overall_score", 0) for s in students) / total if total else 0
+    avg_att = sum(s.get("attendance_pct", 0) for s in students) / total if total else 0
+    sorted_students = sorted(students, key=lambda s: s.get("overall_score", 0), reverse=True)
+    ready_pct = round(ready_count / total * 100, 1) if total else 0
+
+    story = []
+
+    # ── COVER HEADER BANNER ──────────────────────────────────────
+    sub_txt = f"Comprehensive Career Development Programme (CCDP) · {batch_name}"
+    header_tbl = Table(
+        [[Paragraph("Student Performance Dashboard & AI Career Report", cover_title)],
+         [Paragraph(sub_txt, cover_sub)]],
+        colWidths=[doc.width],
+    )
+    header_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BRAND_PRIMARY),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (0, 0), 10),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [BRAND_PRIMARY]),
+    ]))
+    story.append(header_tbl)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # ── KPI ROW ────────────────────────────────────────────────────
+    story.append(Paragraph("PERFORMANCE AT A GLANCE", section_head))
+    kpi_tbl = Table(
+        [[
+            Paragraph(str(total), kpi_num),
+            Paragraph(f"{round(avg_score, 1)}", kpi_num),
+            Paragraph(f"{ready_pct}%", kpi_num),
+            Paragraph(f"{round(avg_att, 1)}%", kpi_num),
+        ], [
+            Paragraph("Total Candidates", kpi_lab),
+            Paragraph("Avg. Score / 100", kpi_lab),
+            Paragraph("Placement Ready", kpi_lab),
+            Paragraph("Avg. Attendance", kpi_lab),
+        ]],
+        colWidths=[doc.width / 4] * 4,
+    )
+    kpi_tbl.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FFF5F8")),
+        ("BACKGROUND", (0, 1), (-1, 1), colors.white),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 0), (-1, 0), [colors.HexColor("#FFF5F8")]),
+    ]))
+    story.append(kpi_tbl)
+    story.append(Spacer(1, 0.5 * cm))
+
+    # ── SUBJECT-WISE / SKILL TABLE (aggregate) ────────────────────
+    # Collect all skills and compute averages
+    skill_totals: dict = {}
+    skill_counts: dict = {}
+    for s in students:
+        for sk_name, sk_val in (s.get("skill_scores") or {}).items():
+            try:
+                v = float(sk_val)
+                skill_totals[sk_name] = skill_totals.get(sk_name, 0) + v
+                skill_counts[sk_name] = skill_counts.get(sk_name, 0) + 1
+            except Exception:
+                pass
+
+    story.append(Paragraph("SUBJECT-WISE ASSESSMENT SCORES (BATCH AVERAGE)", section_head))
+    if skill_totals:
+        sk_rows = [[
+            Paragraph("Assessment Component", tbl_hdr),
+            Paragraph("Avg Score", tbl_hdr),
+            Paragraph("Max", tbl_hdr),
+            Paragraph("%", tbl_hdr),
+        ]]
+        for sname in sorted(skill_totals.keys()):
+            avg = skill_totals[sname] / skill_counts[sname]
+            pct = round(avg, 1)
+            sk_rows.append([sname, f"{pct:.1f}", "100", f"{pct:.1f}%"])
+        sk_tbl = Table(sk_rows, colWidths=[8 * cm, 2.5 * cm, 2 * cm, 3 * cm])
+        sk_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PRIMARY),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FDF2F7")]),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.append(sk_tbl)
+    else:
+        story.append(Paragraph("No skill score data available.", small))
+    story.append(Spacer(1, 0.5 * cm))
+
+    # ── CANDIDATE DETAILS TABLE ───────────────────────────────────
+    story.append(Paragraph("CANDIDATE SHORTLIST & PLACEMENT READINESS", section_head))
+    cand_hdr = [
+        Paragraph("Rank", tbl_hdr),
+        Paragraph("Name", tbl_hdr),
+        Paragraph("Score", tbl_hdr),
+        Paragraph("Best Fit Role", tbl_hdr),
+        Paragraph("Status", tbl_hdr),
+    ]
+    cand_rows = [cand_hdr]
+    for i, s in enumerate(sorted_students, 1):
+        best_role = "—"
+        if s.get("recommended_roles"):
+            best_role = s["recommended_roles"][0].get("role", "—")
+        status = "✓ Ready" if s.get("placement_ready") else "⚠ Needs Prep"
+        cand_rows.append([
+            str(i),
+            s.get("name", "—"),
+            f"{s.get('overall_score', 0):.1f}",
+            best_role,
+            status,
+        ])
+    cand_tbl = Table(
+        cand_rows,
+        colWidths=[1.2 * cm, 5 * cm, 2 * cm, 5.5 * cm, 2.5 * cm],
+        repeatRows=1,
+    )
+    cand_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PRIMARY),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FDF2F7")]),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (0, 0), (0, -1), "CENTER"),
+        ("ALIGN", (2, 0), (2, -1), "CENTER"),
+        ("ALIGN", (4, 0), (4, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(cand_tbl)
+    story.append(Spacer(1, 0.5 * cm))
+
+    # ── FOOTER ───────────────────────────────────────────────────
+    footer_para = ParagraphStyle(
+        "Footer", parent=styles["Normal"],
+        fontSize=7, textColor=colors.HexColor("#94A3B8"), alignment=TA_CENTER,
+    )
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#E2E8F0")))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph(
+        f"Skill Bay Academy (Kauvery Hospital) · CCDP Placement Report · {batch_name} · Generated by SkillBay AI",
+        footer_para,
+    ))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+@router.post("/live/pdf")
+async def live_report_pdf(
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """Generate a live-session PDF report from uploaded student analysis data."""
+    students = payload.get("students", [])
+    batch_name = payload.get("batch_name", "Live Session")
+    course_name = payload.get("course_name", "CCDP")
+    effort = payload.get("effort", "detailed")
+    model = payload.get("model", "gemini-1.5-flash")
+
+    if not students:
+        raise HTTPException(400, "No student data provided")
+
+    buffer = _build_live_report_pdf(students, batch_name, course_name, effort)
+    safe_batch = batch_name.replace(" ", "_").replace("/", "-")
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}.pdf"'},
+    )
+
+
+@router.post("/live/image")
+async def live_report_image(
+    payload: dict,
+    db: Session = Depends(get_db),
+):
+    """Generate a live-session PNG image of the report (renders first page of PDF as image)."""
+    students = payload.get("students", [])
+    batch_name = payload.get("batch_name", "Live Session")
+    course_name = payload.get("course_name", "CCDP")
+    effort = payload.get("effort", "detailed")
+
+    if not students:
+        raise HTTPException(400, "No student data provided")
+
+    pdf_buffer = _build_live_report_pdf(students, batch_name, course_name, effort)
+
+    # Try to render PDF to image using pdf2image if available
+    try:
+        from pdf2image import convert_from_bytes
+        images = convert_from_bytes(pdf_buffer.read(), dpi=150, first_page=1, last_page=1)
+        img_buffer = io.BytesIO()
+        images[0].save(img_buffer, format="PNG")
+        img_buffer.seek(0)
+        safe_batch = batch_name.replace(" ", "_").replace("/", "-")
+        return StreamingResponse(
+            img_buffer,
+            media_type="image/png",
+            headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}.png"'},
+        )
+    except ImportError:
+        # pdf2image not installed — return the PDF instead
+        pdf_buffer.seek(0)
+        safe_batch = batch_name.replace(" ", "_").replace("/", "-")
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}.pdf"'},
+        )

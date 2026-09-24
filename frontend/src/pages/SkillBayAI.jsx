@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles, Send, Loader2, Plus, Trash2, Copy, Check, Database,
-  MessageSquare, ChevronRight, BookOpen, Zap, Users, Briefcase
+  MessageSquare, BookOpen, Zap, Users, Briefcase, Paperclip, X,
+  Image as ImageIcon, FileText, ChevronDown, Cpu, Settings2
 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
@@ -17,6 +18,12 @@ const PROMPT_ICONS = {
   low_performers: Users,
   openings_match: Briefcase,
 };
+
+const MODELS = [
+  { id: "gemini-1.5-flash", label: "Flash", desc: "Fast · Low latency" },
+  { id: "gemini-1.5-pro", label: "Pro", desc: "High quality · Detailed" },
+  { id: "gemini-2.0-flash", label: "Flash 2.0", desc: "Latest · Best speed" },
+];
 
 function MarkdownContent({ text }) {
   const lines = text.split("\n");
@@ -76,15 +83,68 @@ function CopyButton({ text }) {
   );
 }
 
+function AttachChip({ file, onRemove }) {
+  const isImage = file.type?.startsWith("image/");
+  return (
+    <div className="inline-flex items-center gap-1.5 bg-brand-maroon/10 border border-brand-maroon/30 rounded-lg px-2.5 py-1.5 text-xs text-brand-maroon font-medium">
+      {isImage ? <ImageIcon size={12} className="shrink-0" /> : <FileText size={12} className="shrink-0" />}
+      <span className="truncate max-w-[200px]">{file.name}</span>
+      <button onClick={onRemove} className="shrink-0 hover:text-danger transition-colors ml-0.5">
+        <X size={11} />
+      </button>
+    </div>
+  );
+}
+
+function ModelSelector({ selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const curr = MODELS.find(m => m.id === selected) || MODELS[0];
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-high border border-surface-border text-xs font-medium text-ink hover:border-brand-maroon/40 transition-all"
+      >
+        <Cpu size={12} className="text-brand-maroon" />
+        <span>{curr.label}</span>
+        <ChevronDown size={11} className={`text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 right-0 z-50 w-52 bg-surface-dim border border-surface-border rounded-xl shadow-xl overflow-hidden">
+          {MODELS.map(m => (
+            <button
+              key={m.id}
+              onClick={() => { onChange(m.id); setOpen(false); }}
+              className={`w-full text-left px-3 py-2.5 text-xs flex items-start gap-2 transition-colors ${
+                selected === m.id ? "bg-brand-maroon/10 text-ink" : "hover:bg-surface-high text-ink-muted"
+              }`}
+            >
+              <Cpu size={12} className={`mt-0.5 shrink-0 ${selected === m.id ? "text-brand-maroon" : "text-ink-faint"}`} />
+              <div>
+                <div className="font-semibold">{m.label}</div>
+                <div className="text-ink-faint text-[10px]">{m.desc}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SkillBayAI() {
   const queryClient = useQueryClient();
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [selectedModel, setSelectedModel] = useState("gemini-1.5-flash");
+  const [showInfo, setShowInfo] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const { data: sessionsData } = useQuery({
     queryKey: ["ai-sessions"],
@@ -95,6 +155,12 @@ export default function SkillBayAI() {
   const { data: templatesData } = useQuery({
     queryKey: ["ai-templates"],
     queryFn: async () => (await api.get("/api/ai/templates")).data,
+  });
+
+  const { data: settingsData } = useQuery({
+    queryKey: ["admin-settings"],
+    queryFn: async () => (await api.get("/api/admin/settings")).data,
+    staleTime: 60000,
   });
 
   const deleteMutation = useMutation({
@@ -130,9 +196,19 @@ export default function SkillBayAI() {
   };
 
   const sendMessage = async (query) => {
-    const q = (query || input).trim();
-    if (!q || loading) return;
+    let q = (query || input).trim();
+    if (!q && !attachedFile) return;
+    if (loading) return;
+
+    // Append file context
+    if (attachedFile) {
+      q = q
+        ? `${q}\n\n[Attached: ${attachedFile.name}]`
+        : `[Attached file: ${attachedFile.name}] Please analyze or reference this attachment.`;
+    }
+
     setInput("");
+    setAttachedFile(null);
 
     const userMsg = { role: "user", content: q };
     setMessages(prev => [...prev, userMsg]);
@@ -142,6 +218,7 @@ export default function SkillBayAI() {
       const res = await api.post("/api/ai/sessions", {
         query: q,
         session_id: currentSessionId,
+        model: selectedModel,
       });
       setCurrentSessionId(res.data.session_id);
       setMessages(prev => [...prev, { role: "assistant", content: res.data.response }]);
@@ -165,10 +242,18 @@ export default function SkillBayAI() {
     setCurrentSessionId(null);
     setMessages([]);
     setInput("");
+    setAttachedFile(null);
     inputRef.current?.focus();
   };
 
+  const handleFileSelect = (e) => {
+    const f = e.target.files?.[0];
+    if (f) setAttachedFile(f);
+    e.target.value = "";
+  };
+
   const isWelcome = messages.length === 0;
+  const apiActive = settingsData?.gemini_api_key_configured;
 
   return (
     <div className="flex h-screen bg-surface overflow-hidden">
@@ -198,12 +283,48 @@ export default function SkillBayAI() {
           </button>
         </div>
 
-        {/* DB Status */}
-        <div className="px-3 pb-2">
+        {/* DB Status + Model Info */}
+        <div className="px-3 pb-2 space-y-1.5">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-success/10 border border-success/20">
             <Database size={11} className="text-success" />
             <span className="text-[11px] text-success font-medium">Connected to SkillBay DB</span>
           </div>
+
+          {/* Gemini Info Card */}
+          <button
+            onClick={() => setShowInfo(o => !o)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-brand-maroon/8 border border-brand-maroon/20 hover:bg-brand-maroon/15 transition-colors"
+          >
+            <div className="flex items-center gap-1.5">
+              <Cpu size={11} className="text-brand-maroon" />
+              <span className="text-[11px] text-brand-maroon font-semibold">Gemini AI</span>
+            </div>
+            <div className={`w-1.5 h-1.5 rounded-full ${apiActive ? "bg-success" : "bg-brand-yellow"}`} />
+          </button>
+
+          {showInfo && (
+            <div className="mx-0 p-3 rounded-xl bg-surface-container border border-surface-border text-[11px] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-ink-faint">API Status</span>
+                <span className={`font-semibold ${apiActive ? "text-success" : "text-brand-yellow"}`}>
+                  {apiActive ? "Active" : "Local Fallback"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-ink-faint">Model</span>
+                <span className="font-semibold text-ink">{settingsData?.gemini_model || selectedModel}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-ink-faint">Mode</span>
+                <span className="font-semibold text-ink">Chat + Analytics</span>
+              </div>
+              {!apiActive && (
+                <p className="text-ink-faint leading-relaxed border-t border-surface-border pt-2">
+                  Add a Gemini API key in your backend <code className="bg-surface-high px-1 rounded">.env</code> file to enable live AI responses.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sessions */}
@@ -238,12 +359,13 @@ export default function SkillBayAI() {
       {/* ── Main Chat Area ───────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-surface-border flex items-center justify-between">
+        <div className="px-6 py-3.5 border-b border-surface-border flex items-center justify-between">
           <div>
             <h1 className="font-display font-bold text-ink text-lg">SkillBay AI</h1>
             <p className="text-xs text-ink-faint">Your intelligent placement analytics assistant</p>
           </div>
           <div className="flex items-center gap-2">
+            <ModelSelector selected={selectedModel} onChange={setSelectedModel} />
             <span className="text-xs bg-brand-maroon/10 text-brand-maroon px-2.5 py-1 rounded-full font-medium border border-brand-maroon/20">
               Placement Mode
             </span>
@@ -263,6 +385,21 @@ export default function SkillBayAI() {
                 <p className="text-ink-muted text-sm max-w-md mx-auto">
                   Your AI-powered placement intelligence assistant. Connected to live student data, job roles, and batch analytics.
                 </p>
+              </div>
+
+              {/* Capabilities row */}
+              <div className="flex items-center justify-center gap-4 flex-wrap">
+                {[
+                  { icon: Database, label: "Live DB" },
+                  { icon: Cpu, label: "Gemini AI" },
+                  { icon: Paperclip, label: "File Attach" },
+                  { icon: Settings2, label: "Model Select" },
+                ].map(({ icon: Icon, label }) => (
+                  <div key={label} className="flex items-center gap-1.5 text-[11px] text-ink-faint bg-surface-dim border border-surface-border rounded-full px-3 py-1">
+                    <Icon size={11} className="text-brand-maroon" />
+                    {label}
+                  </div>
+                ))}
               </div>
 
               {/* Prompt templates */}
@@ -312,7 +449,7 @@ export default function SkillBayAI() {
                     }`}>
                       {m.role === "assistant"
                         ? <MarkdownContent text={m.content} />
-                        : <p className="text-sm">{m.content}</p>
+                        : <p className="text-sm whitespace-pre-wrap">{m.content}</p>
                       }
                     </div>
                     {m.role === "assistant" && (
@@ -342,27 +479,48 @@ export default function SkillBayAI() {
 
         {/* Input */}
         <div className="px-6 pb-6 pt-3 border-t border-surface-border">
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto space-y-2">
+            {/* Attachment chip */}
+            {attachedFile && (
+              <div className="flex items-center gap-2 px-1">
+                <AttachChip file={attachedFile} onRemove={() => setAttachedFile(null)} />
+              </div>
+            )}
             <div className="flex items-end gap-3 bg-surface-dim border border-surface-border rounded-2xl px-4 py-3 focus-within:border-brand-maroon/50 focus-within:ring-2 focus-within:ring-brand-maroon/20 transition-all">
+              {/* Attach button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="shrink-0 text-ink-faint hover:text-brand-maroon transition-colors pb-0.5"
+                title="Attach file or image"
+              >
+                <Paperclip size={16} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.xlsx,.xls,.csv,.docx,.txt"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Ask anything about students, batches, job roles, placement analytics…"
+                placeholder="Ask anything about students, batches, job roles, placement analytics… (or attach a file)"
                 rows={1}
                 className="flex-1 bg-transparent text-sm text-ink placeholder:text-ink-faint outline-none resize-none leading-relaxed"
               />
               <button
                 onClick={() => sendMessage()}
-                disabled={!input.trim() || loading}
+                disabled={(!input.trim() && !attachedFile) || loading}
                 className="h-9 w-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-brand-maroon to-brand-purple text-white disabled:opacity-30 hover:opacity-90 transition-all shrink-0"
               >
                 {loading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
               </button>
             </div>
-            <p className="text-[11px] text-ink-faint text-center mt-2">
-              Press Enter to send · Shift+Enter for new line · Connected to live placement database
+            <p className="text-[11px] text-ink-faint text-center">
+              Press Enter to send · Shift+Enter for new line · Attach files/images · Connected to live placement database
             </p>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Sparkles, Loader2, ChevronDown } from "lucide-react";
+import { MessageCircle, X, Send, Sparkles, Loader2, ChevronDown, Paperclip, Image as ImageIcon, FileText } from "lucide-react";
 import { api } from "../lib/api";
 
 
@@ -12,7 +12,6 @@ const QUICK_PROMPTS = [
 ];
 
 function MarkdownText({ text }) {
-  // Very basic markdown: bold (**text**), bullet lines (- text)
   const lines = text.split("\n");
   return (
     <div className="space-y-1">
@@ -27,6 +26,19 @@ function MarkdownText({ text }) {
   );
 }
 
+function AttachChip({ file, onRemove }) {
+  const isImage = file.type?.startsWith("image/");
+  return (
+    <div className="flex items-center gap-1.5 bg-brand-maroon/10 border border-brand-maroon/30 rounded-lg px-2 py-1 text-[11px] text-brand-maroon font-medium max-w-full">
+      {isImage ? <ImageIcon size={11} className="shrink-0" /> : <FileText size={11} className="shrink-0" />}
+      <span className="truncate max-w-[160px]">{file.name}</span>
+      <button onClick={onRemove} className="shrink-0 ml-0.5 hover:text-danger transition-colors">
+        <X size={10} />
+      </button>
+    </div>
+  );
+}
+
 export default function MiniChatbot() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -35,8 +47,10 @@ export default function MiniChatbot() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(null);
+  const [attachedFile, setAttachedFile] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (open) {
@@ -54,9 +68,17 @@ export default function MiniChatbot() {
   };
 
   const sendMessage = async (query) => {
-    const q = (query || input).trim();
-    if (!q || loading) return;
+    let q = (query || input).trim();
+    if (!q && !attachedFile) return;
+    if (loading) return;
+
+    // Append file context to query
+    if (attachedFile) {
+      q = q ? `${q}\n\n[Attached file: ${attachedFile.name}]` : `[Attached file: ${attachedFile.name}] Please analyze or reference this file in your response.`;
+    }
+
     setInput("");
+    setAttachedFile(null);
 
     const newMessages = [...messages, { role: "user", content: q }];
     setMessages(newMessages);
@@ -80,6 +102,12 @@ export default function MiniChatbot() {
     }
   };
 
+  const handleFileSelect = (e) => {
+    const f = e.target.files?.[0];
+    if (f) setAttachedFile(f);
+    e.target.value = "";
+  };
+
   return (
     <>
       {/* Floating trigger button */}
@@ -96,7 +124,7 @@ export default function MiniChatbot() {
       </button>
 
       {/* Chat window */}
-      <div className={`fixed bottom-24 right-6 z-50 w-[360px] max-h-[520px] rounded-2xl shadow-2xl border border-surface-border bg-surface-dim flex flex-col overflow-hidden transition-all duration-300 ${
+      <div className={`fixed bottom-24 right-6 z-50 w-[370px] max-h-[540px] rounded-2xl shadow-2xl border border-surface-border bg-surface-dim flex flex-col overflow-hidden transition-all duration-300 ${
         open ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-4 pointer-events-none"
       }`}>
         {/* Header */}
@@ -150,9 +178,31 @@ export default function MiniChatbot() {
           </div>
         )}
 
+        {/* Attachment chip */}
+        {attachedFile && (
+          <div className="px-3 pb-1">
+            <AttachChip file={attachedFile} onRemove={() => setAttachedFile(null)} />
+          </div>
+        )}
+
         {/* Input */}
         <div className="px-3 pb-3">
-          <div className="flex items-center gap-2 bg-surface-container border border-surface-border rounded-xl px-3 py-2">
+          <div className="flex items-center gap-2 bg-surface-container border border-surface-border rounded-xl px-3 py-2 focus-within:border-brand-maroon/50 transition-colors">
+            {/* Attach button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="text-ink-faint hover:text-brand-maroon transition-colors shrink-0"
+              title="Attach file or image"
+            >
+              <Paperclip size={14} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf,.xlsx,.xls,.csv,.docx,.txt"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
             <input
               ref={inputRef}
               value={input}
@@ -163,7 +213,7 @@ export default function MiniChatbot() {
             />
             <button
               onClick={() => sendMessage()}
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim() && !attachedFile) || loading}
               className="h-7 w-7 flex items-center justify-center rounded-lg bg-brand-maroon text-white disabled:opacity-40 hover:bg-brand-purple transition-colors shrink-0"
             >
               <Send size={13} />

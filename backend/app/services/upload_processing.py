@@ -237,6 +237,39 @@ def read_all_sheets(filename: str, raw_bytes: bytes) -> dict[str, pd.DataFrame]:
     return sheets_dict if isinstance(sheets_dict, dict) else {"Sheet1": sheets_dict}
 
 
+def _promote_row2_headers(df: pd.DataFrame, warnings: list, sheet_name: str) -> pd.DataFrame:
+    """
+    If any column is named 'Unnamed: N' (pandas default for missing headers),
+    check the first data row to see if it contains a valid non-numeric string
+    that can serve as a column name. If so, promote it and drop that row.
+    """
+    unnamed_pattern = re.compile(r"^Unnamed:\s*\d+$", re.IGNORECASE)
+    unnamed_cols = [c for c in df.columns if unnamed_pattern.match(str(c))]
+
+    if not unnamed_cols or df.empty:
+        return df
+
+    # Check if first row looks like a header row (most values are strings/non-numeric)
+    first_row = df.iloc[0]
+    promotable = {}
+    for col in unnamed_cols:
+        val = str(first_row[col]).strip() if pd.notna(first_row[col]) else ""
+        if val and val.lower() not in ("nan", "none", "") and not re.match(r"^\d+(\.\d+)?$", val):
+            promotable[col] = val
+
+    if not promotable:
+        return df
+
+    # Rename and drop first row
+    df = df.rename(columns=promotable)
+    df = df.iloc[1:].reset_index(drop=True)
+    promoted = list(promotable.values())
+    warnings.append(
+        f"Sheet '{sheet_name}': {len(promoted)} unnamed column(s) named from row 2: {', '.join(promoted[:5])}."
+    )
+    return df
+
+
 def analyze_sheet(filename: str, raw_bytes: bytes):
     """
     Scans ALL sheets in the uploaded workbook.
@@ -256,6 +289,9 @@ def analyze_sheet(filename: str, raw_bytes: bytes):
             continue
         df = df.copy()
         df.columns = [str(c).strip() for c in df.columns]
+
+        # Promote row-2 values as column names for any "Unnamed: N" columns
+        df = _promote_row2_headers(df, warnings, sheet_name)
 
         if df.duplicated(subset=None).any():
             warnings.append(f"Sheet '{sheet_name}': Duplicate rows detected — duplicates removed.")

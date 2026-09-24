@@ -271,8 +271,8 @@ export default function Settings() {
   const handleSaveWeights = () => {
     const sw = parseFloat(skillWeight);
     const aw = parseFloat(attWeight);
-    if (isNaN(sw) || isNaN(aw) || Math.abs(sw + aw - 100) > 0.5) {
-      setWeightError("Skill Weight + Attendance Weight must equal 100%.");
+    if (isNaN(sw) || isNaN(aw) || sw < 0 || sw > 100 || aw < 0 || aw > 100) {
+      setWeightError("Each weight must be between 0 and 100.");
       return;
     }
     setWeightError("");
@@ -288,16 +288,14 @@ export default function Settings() {
   };
 
   const handleSkillWeightChange = (val) => {
-    const sw = parseFloat(val) || 0;
+    const sw = Math.max(0, Math.min(100, parseFloat(val) || 0));
     setSkillWeight(sw);
-    setAttWeight(Math.max(0, Math.min(100, parseFloat((100 - sw).toFixed(1)))));
     setWeightError("");
   };
 
   const handleAttWeightChange = (val) => {
-    const aw = parseFloat(val) || 0;
+    const aw = Math.max(0, Math.min(100, parseFloat(val) || 0));
     setAttWeight(aw);
-    setSkillWeight(Math.max(0, Math.min(100, parseFloat((100 - aw).toFixed(1)))));
     setWeightError("");
   };
 
@@ -581,7 +579,8 @@ export default function Settings() {
                   <h4 className="font-semibold text-sm text-ink">Scoring Weight Configuration</h4>
                 </div>
                 <p className="text-xs text-ink-faint">
-                  Adjust how skill scores and attendance contribute to the overall CCDP score. Values must sum to 100%.
+                  Adjust how skill scores and attendance independently contribute to the overall CCDP score.
+                  Each weight is configurable from 0 to 100 — they are independent of each other.
                 </p>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -623,27 +622,34 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {/* Visual weight bar */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs text-ink-faint">
-                    <span>Weight Distribution</span>
-                    <span className={`font-semibold ${Math.abs(skillWeight + attWeight - 100) > 0.5 ? "text-danger" : "text-success"}`}>
-                      {(skillWeight + attWeight).toFixed(0)}% total {Math.abs(skillWeight + attWeight - 100) <= 0.5 ? "✓" : "— must equal 100%"}
-                    </span>
-                  </div>
-                  <div className="w-full h-3 rounded-full overflow-hidden bg-surface-high flex">
-                    <div
-                      className="h-full bg-brand-maroon transition-all duration-300"
-                      style={{ width: `${Math.min(100, skillWeight)}%` }}
-                    />
-                    <div
-                      className="h-full bg-brand-purple transition-all duration-300"
-                      style={{ width: `${Math.min(100, attWeight)}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center gap-3 text-[11px] text-ink-faint">
-                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-brand-maroon inline-block" /> Skills ({skillWeight}%)</span>
-                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-brand-purple inline-block" /> Attendance ({attWeight}%)</span>
+                {/* Visual weight bars — independent */}
+                <div className="space-y-2">
+                  <p className="text-xs text-ink-faint font-medium">Weight Indicators (each 0–100, independent)</p>
+                  <div className="space-y-1.5">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-ink-faint mb-1">
+                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-brand-maroon inline-block" /> Skills</span>
+                        <span className="font-semibold text-brand-maroon">{skillWeight}%</span>
+                      </div>
+                      <div className="w-full h-2.5 rounded-full overflow-hidden bg-surface-high">
+                        <div
+                          className="h-full bg-brand-maroon transition-all duration-300 rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(0, skillWeight))}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-ink-faint mb-1">
+                        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-brand-purple inline-block" /> Attendance</span>
+                        <span className="font-semibold text-brand-purple">{attWeight}%</span>
+                      </div>
+                      <div className="w-full h-2.5 rounded-full overflow-hidden bg-surface-high">
+                        <div
+                          className="h-full bg-brand-purple transition-all duration-300 rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(0, attWeight))}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -663,7 +669,7 @@ export default function Settings() {
 
                 <Button
                   onClick={handleSaveWeights}
-                  disabled={updateMutation.isPending || Math.abs(skillWeight + attWeight - 100) > 0.5}
+                  disabled={updateMutation.isPending || skillWeight < 0 || skillWeight > 100 || attWeight < 0 || attWeight > 100}
                   className="w-full"
                 >
                   <Zap size={14} className="mr-1.5" />
@@ -683,12 +689,16 @@ export default function Settings() {
               </p>
               <div className="pt-3 border-t border-surface-border space-y-2 text-xs text-ink-faint">
                 <div className="flex justify-between py-1 border-b border-surface-border/60">
-                  <span>Current Skill Weight</span>
+                  <span>Skill Weight (independent)</span>
                   <span className="font-bold text-brand-maroon">{skillWeight}%</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-surface-border/60">
-                  <span>Current Attendance Weight</span>
+                  <span>Attendance Weight (independent)</span>
                   <span className="font-bold text-brand-purple">{attWeight}%</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-border/60">
+                  <span>Weight Mode</span>
+                  <span className="font-bold text-success">Independent (0–100 each)</span>
                 </div>
                 <div className="flex justify-between py-1">
                   <span>Readiness Threshold</span>
@@ -696,6 +706,7 @@ export default function Settings() {
                 </div>
               </div>
             </Card>
+
           </div>
         )}
 
