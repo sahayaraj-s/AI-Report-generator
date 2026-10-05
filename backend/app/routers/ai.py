@@ -1,15 +1,67 @@
 """
 SkillBay AI chat router — powers the Mini Chatbot and the dedicated SkillBay AI page.
+Features:
+- GET /api/ai/status (honest mode, model, last_error)
+- GET /api/ai/models (available models from models.list)
+- POST /api/ai/chat (stateless)
+- POST /api/ai/chat/stream (SSE streaming with token, tool_status, done, error)
+- Persisted sessions with source + model labels
+- Multimodal attachment parsing (PNG/JPG/WEBP, PDF, XLSX/CSV preview)
 """
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, Body
+
+import base64
+import json
+import logging
+from typing import Any
+from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_admin
 from app.database import get_db
-from app.models import AIChatSession, AIChatMessage
-from app.services.ai_service import generate_chat_response
+from app.models import AIChatMessage, AIChatSession
+from app.services.llm_manager import (
+    generate_chat_turn,
+    get_ai_status,
+    refresh_available_models,
+)
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+
+
+def _parse_attachments(payload: dict) -> list[tuple[str, bytes]]:
+    raw_list = payload.get("attachments") or []
+    out = []
+    for att in raw_list:
+        fname = att.get("name", "upload")
+        data = att.get("data", "")
+        if data:
+            if "," in data:
+                data = data.split(",", 1)[1]
+            try:
+                raw_b = base64.b64decode(data)
+                out.append((fname, raw_b))
+            except Exception as e:
+                log.warning("Failed to decode attachment %s: %s", fname, e)
+    return out
+
+
+# ─── Status & Model Discovery ────────────────────────────────────────────────
+
+@router.get("/status")
+def ai_status(admin: dict = Depends(get_current_admin)):
+    """Honest status of the AI engine: mode ('gemini' | 'degraded' | 'offline'), model, last_error."""
+    return get_ai_status()
+
+
+@router.get("/models")
+def list_models(admin: dict = Depends(get_current_admin)):
+    """Returns active models supporting generateContent discovered via models.list."""
+    models = refresh_available_models()
+    return {"models": models}
 
 
 # ─── Chat (stateless) ────────────────────────────────────────────────────────
@@ -18,24 +70,107 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 async def chat(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
+    admin: dict = Depends(get_current_admin),
 ):
     """
-    Stateless chat endpoint — takes query + history, returns AI response.
-    Used by Mini Chatbot.
+    Stateless chat endpoint — takes query + history + optional attachments,
+    returns aggregated AI response with source and model.
     """
     query = (payload.get("query") or payload.get("content") or "").strip()
     if not query:
         raise HTTPException(400, "Query is required")
-    history = payload.get("history", [])
 
-    response = await generate_chat_response(query, history, db)
-    return {"response": response, "query": query, "content": response}
+    history = payload.get("history", [])
+    model_override = payload.get("model")
+    effort = payload.get("effort", "quick")
+    attachments = _parse_attachments(payload)
+
+    tokens = []
+    source = "gemini"
+    active_model = "gemini-3.6-flash"
+
+    async for item in generate_chat_turn(
+        query=query,
+        history=history,
+        db=db,
+        model_override=model_override,
+        attachments=attachments,
+        effort=effort,
+    ):
+        evt = item.get("event")
+        data = item.get("data", {})
+        if evt == "token":
+            tokens.append(data.get("text", ""))
+        elif evt == "done":
+            source = data.get("source", source)
+            active_model = data.get("model", active_model)
+
+    full_resp = "".join(tokens)
+    return {
+        "response": full_resp,
+        "content": full_resp,
+        "query": query,
+        "source": source,
+        "model": active_model,
+    }
+
+
+# ─── Chat Streaming (SSE) ────────────────────────────────────────────────────
+
+@router.post("/chat/stream")
+async def chat_stream(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+    admin: dict = Depends(get_current_admin),
+):
+    """
+    SSE streaming endpoint emitting:
+    - event: tool_status -> {"status": "Querying student profile...", "tool": "get_student_profile"}
+    - event: token -> {"text": "chunk"}
+    - event: done -> {"source": "gemini|local", "model": "..."}
+    - event: error -> {"message": "..."}
+    """
+    query = (payload.get("query") or payload.get("content") or "").strip()
+    if not query:
+        raise HTTPException(400, "Query is required")
+
+    history = payload.get("history", [])
+    model_override = payload.get("model")
+    effort = payload.get("effort", "quick")
+    attachments = _parse_attachments(payload)
+
+    async def event_generator():
+        try:
+            async for item in generate_chat_turn(
+                query=query,
+                history=history,
+                db=db,
+                model_override=model_override,
+                attachments=attachments,
+                effort=effort,
+            ):
+                evt = item.get("event", "token")
+                d = json.dumps(item.get("data", {}))
+                yield f"event: {evt}\ndata: {d}\n\n"
+        except Exception as e:
+            err_data = json.dumps({"message": str(e)})
+            yield f"event: error\ndata: {err_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ─── Chat Sessions (persisted) ────────────────────────────────────────────────
 
 @router.get("/sessions")
-def list_sessions(db: Session = Depends(get_db)):
+def list_sessions(db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     """List all chat sessions for the SkillBay AI page sidebar."""
     sessions = db.query(AIChatSession).order_by(AIChatSession.updated_at.desc()).limit(50).all()
     return {
@@ -56,11 +191,8 @@ def list_sessions(db: Session = Depends(get_db)):
 async def create_session_and_chat(
     payload: dict = Body(default={}),
     db: Session = Depends(get_db),
+    admin: dict = Depends(get_current_admin),
 ):
-    """
-    Create a new chat session. If query is provided, generates AI response and persists it.
-    If query is not provided, returns a newly created empty session.
-    """
     query = (payload.get("query") or payload.get("content") or "").strip()
     session_id = payload.get("session_id", None)
     title = payload.get("title", "").strip()
@@ -87,18 +219,33 @@ async def create_session_and_chat(
             "updated_at": session.updated_at.isoformat(),
         }
 
-    # Load history
-    history = [
-        {"role": m.role, "content": m.content}
-        for m in session.messages
-    ]
+    history = [{"role": m.role, "content": m.content} for m in session.messages]
+    model_override = payload.get("model")
+    effort = payload.get("effort", "quick")
+    attachments = _parse_attachments(payload)
 
-    # Generate AI response
-    response = await generate_chat_response(query, history, db)
+    tokens = []
+    source = "gemini"
+    active_model = "gemini-3.6-flash"
 
-    # Persist messages
-    db.add(AIChatMessage(session_id=session.id, role="user", content=query))
-    db.add(AIChatMessage(session_id=session.id, role="assistant", content=response))
+    async for item in generate_chat_turn(
+        query=query,
+        history=history,
+        db=db,
+        model_override=model_override,
+        attachments=attachments,
+        effort=effort,
+    ):
+        if item.get("event") == "token":
+            tokens.append(item.get("data", {}).get("text", ""))
+        elif item.get("event") == "done":
+            source = item.get("data", {}).get("source", source)
+            active_model = item.get("data", {}).get("model", active_model)
+
+    response_text = "".join(tokens)
+
+    db.add(AIChatMessage(session_id=session.id, role="user", content=query, source="user", model=""))
+    db.add(AIChatMessage(session_id=session.id, role="assistant", content=response_text, source=source, model=active_model))
     db.commit()
     db.refresh(session)
 
@@ -107,14 +254,16 @@ async def create_session_and_chat(
         "session_id": session.id,
         "title": session.title,
         "session_title": session.title,
-        "response": response,
+        "response": response_text,
         "query": query,
-        "content": response,
+        "content": response_text,
+        "source": source,
+        "model": active_model,
     }
 
 
 @router.get("/sessions/{session_id}")
-def get_session(session_id: int, db: Session = Depends(get_db)):
+def get_session(session_id: int, db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     """Get all messages in a session."""
     session = db.query(AIChatSession).get(session_id)
     if not session:
@@ -123,7 +272,14 @@ def get_session(session_id: int, db: Session = Depends(get_db)):
         "id": session.id,
         "title": session.title,
         "messages": [
-            {"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "source": getattr(m, "source", "gemini"),
+                "model": getattr(m, "model", "gemini-3.6-flash"),
+                "created_at": m.created_at.isoformat(),
+            }
             for m in session.messages
         ],
     }
@@ -134,6 +290,7 @@ async def send_message(
     session_id: int,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
+    admin: dict = Depends(get_current_admin),
 ):
     session = db.query(AIChatSession).get(session_id)
     if not session:
@@ -143,15 +300,33 @@ async def send_message(
     if not user_text:
         raise HTTPException(400, "Message content is required")
 
-    history = [
-        {"role": m.role, "content": m.content}
-        for m in session.messages
-    ]
+    history = [{"role": m.role, "content": m.content} for m in session.messages]
+    model_override = payload.get("model")
+    effort = payload.get("effort", "quick")
+    attachments = _parse_attachments(payload)
 
-    assistant_text = await generate_chat_response(user_text, history, db)
+    tokens = []
+    source = "gemini"
+    active_model = "gemini-3.6-flash"
 
-    user_msg = AIChatMessage(session_id=session_id, role="user", content=user_text)
-    assistant_msg = AIChatMessage(session_id=session_id, role="assistant", content=assistant_text)
+    async for item in generate_chat_turn(
+        query=user_text,
+        history=history,
+        db=db,
+        model_override=model_override,
+        attachments=attachments,
+        effort=effort,
+    ):
+        if item.get("event") == "token":
+            tokens.append(item.get("data", {}).get("text", ""))
+        elif item.get("event") == "done":
+            source = item.get("data", {}).get("source", source)
+            active_model = item.get("data", {}).get("model", active_model)
+
+    assistant_text = "".join(tokens)
+
+    user_msg = AIChatMessage(session_id=session_id, role="user", content=user_text, source="user", model="")
+    assistant_msg = AIChatMessage(session_id=session_id, role="assistant", content=assistant_text, source=source, model=active_model)
     db.add(user_msg)
     db.add(assistant_msg)
 
@@ -166,12 +341,14 @@ async def send_message(
         "role": "assistant",
         "content": assistant_text,
         "response": assistant_text,
+        "source": source,
+        "model": active_model,
         "created_at": assistant_msg.created_at.isoformat(),
     }
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session(session_id: int, db: Session = Depends(get_db)):
+def delete_session(session_id: int, db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     session = db.query(AIChatSession).get(session_id)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -194,5 +371,5 @@ PROMPT_TEMPLATES = [
 ]
 
 @router.get("/templates")
-def get_templates():
+def get_templates(admin: dict = Depends(get_current_admin)):
     return {"templates": PROMPT_TEMPLATES}

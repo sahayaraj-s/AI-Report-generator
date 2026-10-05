@@ -4,71 +4,41 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+import logging
 from app.config import settings
 from app.database import SessionLocal, engine, init_db
 from app.models import Institute, JobRoleModel
 from app.routers import admin, auth_router, dashboard, jobs, reports, students, upload, ai as ai_router
 from app.services.job_roles import _get_default_kauvery_roles
 
+logger = logging.getLogger("uvicorn.error")
+
 app = FastAPI(title="Skill Bay Academy — AI Placement Analytics API", version="2.0.0")
+
+# Parse allowed origins from environment variable (comma-separated)
+cors_origins_list = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+if not cors_origins_list:
+    cors_origins_list = ["http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.frontend_origin,
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origins=cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-init_db()
-
 
 @app.on_event("startup")
 def on_startup():
     init_db()
-    # Auto-migrate SQLite schema
-    try:
-        with engine.connect() as conn:
-            # Check job_roles columns
-            result = conn.execute(text("PRAGMA table_info(job_roles)"))
-            existing_cols = {row[1] for row in result.fetchall()}
-            if existing_cols:
-                if "company_name" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN company_name VARCHAR"))
-                if "openings" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN openings INTEGER DEFAULT 0"))
-                if "is_active" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN is_active BOOLEAN DEFAULT 1"))
-                if "demand_level" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN demand_level VARCHAR DEFAULT 'Medium'"))
-                if "min_score" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN min_score FLOAT DEFAULT 0.0"))
-                if "kauvery_unit" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN kauvery_unit VARCHAR DEFAULT 'Kauvery Hospital - Trichy (Tennur)'"))
-                if "department" not in existing_cols:
-                    conn.execute(text("ALTER TABLE job_roles ADD COLUMN department VARCHAR DEFAULT 'Hospital Administration & Operations'"))
 
-            # Check institutes columns
-            res_inst = conn.execute(text("PRAGMA table_info(institutes)"))
-            inst_cols = {row[1] for row in res_inst.fetchall()}
-            if inst_cols:
-                if "parent_org" not in inst_cols:
-                    conn.execute(text("ALTER TABLE institutes ADD COLUMN parent_org VARCHAR DEFAULT 'Kauvery Hospital'"))
-                if "program_name" not in inst_cols:
-                    conn.execute(text("ALTER TABLE institutes ADD COLUMN program_name VARCHAR DEFAULT 'Career & Competency Development Program (CCDP)'"))
-                if "program_duration" not in inst_cols:
-                    conn.execute(text("ALTER TABLE institutes ADD COLUMN program_duration VARCHAR DEFAULT '50 Days'"))
-
-            conn.commit()
-    except Exception as e:
-        print("Auto-migration notice:", e)
+    if settings.dev_mode:
+        logger.warning("=" * 64)
+        logger.warning("  ⚠️  SECURITY WARNING: DEV_MODE is ENABLED! ⚠️")
+        logger.warning("  Authentication is currently bypassed for testing.")
+        logger.warning("  Ensure DEV_MODE=False is configured for all production deploys.")
+        logger.warning("=" * 64)
 
     db = SessionLocal()
     try:

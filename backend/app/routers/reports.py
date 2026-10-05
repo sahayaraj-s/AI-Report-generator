@@ -1,7 +1,9 @@
 from __future__ import annotations
+# pyrefly: ignore-errors
 import io
 import json
 import csv
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -85,11 +87,36 @@ def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Dep
     if not analysis:
         raise HTTPException(400, "No analysis available yet for this student — run analysis first")
 
+    # 1. Try to generate Canva-matching 3-page PDF from live metrics data
+    try:
+        from pdf_generator import generate_student_report_pdf
+        from app.services.chat_service import get_live_metrics_data
+        bundle = get_live_metrics_data()
+        student_rec = None
+        if bundle and "per_student" in bundle:
+            s_name = student.name.strip().lower()
+            for cn, rec in bundle["per_student"].items():
+                if cn in s_name or s_name in cn or rec.get("display_name", "").lower() == s_name:
+                    student_rec = rec
+                    break
+
+        if student_rec:
+            batch_label = student.batch.name if student.batch else "CCDP 2"
+            pdf_bytes = generate_student_report_pdf(student_rec, batch_name=batch_label)
+            filename = f"{student.name.replace(' ', '_')}_Dashboard_Report.pdf"
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+    except Exception as exc:
+        print("Live PDF generator notice:", exc)
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
     styles, title_style, h2, h3, body, small = _get_styles()
 
-    story = [
+    story: list[Any] = [
         Paragraph("Skill Bay Academy (Kauvery Hospital) — CCDP Placement Report", title_style),
         Spacer(1, 0.3 * cm),
         Paragraph(f"{student.name}  ·  {student.roll_number or '—'}  ·  Batch: {student.batch.name if student.batch else 'CCDP 1'}", styles["Heading3"]),
@@ -126,8 +153,8 @@ def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Dep
     story.append(Paragraph(analysis.ai_summary or "—", body))
     story.append(Spacer(1, 0.4 * cm))
 
-    strengths = json.loads(analysis.strengths or "[]")
-    weaknesses = json.loads(analysis.weaknesses or "[]")
+    strengths = json.loads(str(analysis.strengths or "[]"))
+    weaknesses = json.loads(str(analysis.weaknesses or "[]"))
     story.append(Paragraph("Strengths", h2))
     story.append(Paragraph(", ".join(s.title() for s in strengths) or "—", body))
     story.append(Spacer(1, 0.3 * cm))
@@ -135,7 +162,7 @@ def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Dep
     story.append(Paragraph(", ".join(w.title() for w in weaknesses) or "—", body))
     story.append(Spacer(1, 0.4 * cm))
 
-    roles = json.loads(analysis.recommended_roles or "[]")
+    roles = json.loads(str(analysis.recommended_roles or "[]"))
     story.append(Paragraph("Suitable Job Roles", h2))
     if roles:
         role_table = Table(
@@ -166,7 +193,7 @@ def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Dep
             story.append(Paragraph(line, body))
     story.append(Spacer(1, 0.3 * cm))
 
-    certs = json.loads(analysis.recommended_certifications or "[]")
+    certs = json.loads(str(analysis.recommended_certifications or "[]"))
     story.append(Paragraph("Recommended Certifications", h2))
     story.append(Paragraph(", ".join(certs) or "—", body))
 
@@ -250,11 +277,11 @@ def batch_report_pdf(
 
     # Aggregate stats
     total = len(students)
-    ready = sum(1 for s in students if s.placement_ready)
-    avg_score = sum(s.overall_score for s in students) / total if total else 0
-    avg_att = sum(s.attendance_pct for s in students) / total if total else 0
+    ready = sum(1 for s in students if bool(getattr(s, "placement_ready", False)))
+    avg_score = sum(float(str(getattr(s, "overall_score", 0) or 0)) for s in students) / total if total else 0
+    avg_att = sum(float(str(getattr(s, "attendance_pct", 0) or 0)) for s in students) / total if total else 0
 
-    story = [
+    story: list[Any] = [
         Paragraph("Skill Bay Academy — Batch Summary Report", title_style),
         Spacer(1, 0.2 * cm),
         Paragraph(f"Batch: {batch_title}  ·  Course: {course_title}", styles["Heading3"]),
@@ -291,21 +318,21 @@ def batch_report_pdf(
     # Per-student table
     story.append(Paragraph("Student Details", h2))
     headers = ["Name", "Roll No.", "Score", "Attendance", "Status", "Best Fit Role", "Fit Tier"]
-    rows = [headers]
+    rows: list[list[str]] = [headers]
     for s in students:
         best_role = "—"
         fit_tier = "—"
         if s.analysis_results:
-            roles_raw = json.loads(s.analysis_results[0].recommended_roles or "[]")
+            roles_raw = json.loads(str(s.analysis_results[0].recommended_roles or "[]"))
             if roles_raw:
-                best_role = roles_raw[0].get("role", "—")
-                fit_tier = roles_raw[0].get("fit_tier", "—")
+                best_role = str(roles_raw[0].get("role", "—"))
+                fit_tier = str(roles_raw[0].get("fit_tier", "—"))
         rows.append([
-            s.name[:22],
-            s.roll_number or "—",
+            str(s.name)[:22],
+            str(s.roll_number or "—"),
             f"{s.overall_score}",
             f"{s.attendance_pct}%",
-            "Ready" if s.placement_ready else "Needs Training",
+            "Ready" if bool(s.placement_ready) else "Needs Training",
             best_role[:18],
             fit_tier,
         ])
@@ -319,7 +346,7 @@ def batch_report_pdf(
         ("FONTSIZE", (0, 0), (-1, -1), 8),
     ]
     for i, s in enumerate(students, 1):
-        if s.placement_ready:
+        if bool(s.placement_ready):
             ts.append(("BACKGROUND", (4, i), (4, i), colors.HexColor("#D1FAE5")))
         else:
             ts.append(("BACKGROUND", (4, i), (4, i), colors.HexColor("#FEF3C7")))
@@ -337,6 +364,21 @@ def batch_report_pdf(
     )
 
 
+def sanitize_csv_cell(value: Any) -> Any:
+    """
+    Prevents CSV formula injection by prepending a single quote (') if the string
+    starts with =, +, -, @, tab (\t), or carriage return (\r).
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)) and value >= 0:
+        return value
+    str_val = str(value)
+    if str_val and str_val[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{str_val}"
+    return value
+
+
 @router.get("/batch/csv")
 def batch_report_csv(
     batch: str = "",
@@ -350,7 +392,8 @@ def batch_report_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Name", "Roll Number", "Email", "Course", "Batch", "Attendance %", "Overall Score", "Placement Ready", "Best Fit Role", "Fit Tier"])
+    header = ["Name", "Roll Number", "Email", "Course", "Batch", "Attendance %", "Overall Score", "Placement Ready", "Best Fit Role", "Fit Tier"]
+    writer.writerow([sanitize_csv_cell(h) for h in header])
 
     for s in students:
         best_role = "—"
@@ -363,7 +406,7 @@ def batch_report_csv(
                     fit_tier = roles_raw[0].get("fit_tier", "—")
             except Exception:
                 pass
-        writer.writerow([
+        row = [
             s.name,
             s.roll_number or "",
             s.email or "",
@@ -371,10 +414,11 @@ def batch_report_csv(
             s.batch.name if s.batch else "",
             s.attendance_pct,
             s.overall_score,
-            "Yes" if s.placement_ready else "No",
+            "Yes" if bool(s.placement_ready) else "No",
             best_role,
             fit_tier,
-        ])
+        ]
+        writer.writerow([sanitize_csv_cell(cell) for cell in row])
 
     output.seek(0)
     filename = f"students_{batch.replace(' ', '_') if batch else 'all'}.csv"
@@ -434,7 +478,7 @@ def match_matrix_pdf(db: Session = Depends(get_db), admin=Depends(get_current_ad
                             leftMargin=1.5 * cm, rightMargin=1.5 * cm)
     styles, title_style, h2, h3, body, small = _get_styles()
 
-    story = [
+    story: list[Any] = [
         Paragraph("Skill Bay Academy — Job Role Match Matrix", title_style),
         Spacer(1, 0.3 * cm),
         Paragraph("Fit tiers: Perfect Match (green) · Medium Fit (blue) · Low Fit (yellow) · — (not matched)", small),
@@ -504,7 +548,8 @@ def match_matrix_csv(db: Session = Depends(get_db), admin=Depends(get_current_ad
     writer = csv.writer(output)
 
     role_names = [r.name for r in active_roles]
-    writer.writerow(["Student", "Roll No.", "Score", "Placement Ready"] + role_names)
+    header = ["Student", "Roll No.", "Score", "Placement Ready"] + role_names
+    writer.writerow([sanitize_csv_cell(h) for h in header])
 
     for row in matrix:
         s = row["student"]
@@ -514,7 +559,7 @@ def match_matrix_csv(db: Session = Depends(get_db), admin=Depends(get_current_ad
             tier = match.get("fit_tier", "—")
             conf = match.get("confidence", 0)
             cells.append(f"{tier} ({conf}%)" if tier != "—" else "—")
-        writer.writerow(cells)
+        writer.writerow([sanitize_csv_cell(c) for c in cells])
 
     output.seek(0)
     return StreamingResponse(
@@ -572,7 +617,7 @@ def institute_report_pdf(db: Session = Depends(get_db), admin=Depends(get_curren
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
     styles, title_style, h2, h3, body, small = _get_styles()
 
-    story = [
+    story: list[Any] = [
         Paragraph(f"{inst_name}", title_style),
         Paragraph("Full Placement Audit Report", ParagraphStyle("Sub", parent=styles["Heading2"], textColor=BRAND_PURPLE)),
         Spacer(1, 0.5 * cm),
@@ -620,9 +665,9 @@ def institute_report_pdf(db: Session = Depends(get_db), admin=Depends(get_curren
 
     # Top performers
     story.append(Paragraph("Top Performers", h2))
-    t_rows = [["Rank", "Name", "Score", "Status"]]
+    t_rows: list[list[str]] = [["Rank", "Name", "Score", "Status"]]
     for i, s in enumerate(top_students, 1):
-        t_rows.append([str(i), s.name, f"{s.overall_score}/100", "✓ Ready" if s.placement_ready else "In Training"])
+        t_rows.append([str(i), str(s.name), f"{s.overall_score}/100", "✓ Ready" if bool(s.placement_ready) else "In Training"])
     t_table = Table(t_rows, colWidths=[1.5 * cm, 6 * cm, 3 * cm, 4.5 * cm])
     t_table.setStyle(TableStyle(_table_style_base() + [
         ("BACKGROUND", (0, 0), (-1, 0), BRAND_YELLOW),
@@ -649,9 +694,9 @@ def institute_report_pdf(db: Session = Depends(get_db), admin=Depends(get_curren
 
     # Active job roles
     story.append(Paragraph("Active Job Roles & Openings", h2))
-    r_rows = [["Role", "Company", "Openings", "Demand Level"]]
+    r_rows: list[list[str]] = [["Role", "Company", "Openings", "Demand Level"]]
     for r in active_roles:
-        r_rows.append([r.name, r.company_name or "—", str(r.openings or 0), r.demand_level or "Medium"])
+        r_rows.append([str(r.name), str(r.company_name or "—"), str(r.openings or 0), str(r.demand_level or "Medium")])
     r_table = Table(r_rows, colWidths=[5 * cm, 4 * cm, 2.5 * cm, 3.5 * cm])
     r_table.setStyle(TableStyle(_table_style_base() + [
         ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
@@ -729,7 +774,7 @@ def _build_live_report_pdf(students: list, batch_name: str, course_name: str, ef
     sorted_students = sorted(students, key=lambda s: s.get("overall_score", 0), reverse=True)
     ready_pct = round(ready_count / total * 100, 1) if total else 0
 
-    story = []
+    story: list[Any] = []
 
     # ── COVER HEADER BANNER ──────────────────────────────────────
     sub_txt = f"Comprehensive Career Development Programme (CCDP) · {batch_name}"
@@ -792,7 +837,7 @@ def _build_live_report_pdf(students: list, batch_name: str, course_name: str, ef
 
     story.append(Paragraph("SUBJECT-WISE ASSESSMENT SCORES (BATCH AVERAGE)", section_head))
     if skill_totals:
-        sk_rows = [[
+        sk_rows: list[list[Any]] = [[
             Paragraph("Assessment Component", tbl_hdr),
             Paragraph("Avg Score", tbl_hdr),
             Paragraph("Max", tbl_hdr),
@@ -828,7 +873,7 @@ def _build_live_report_pdf(students: list, batch_name: str, course_name: str, ef
         Paragraph("Best Fit Role", tbl_hdr),
         Paragraph("Status", tbl_hdr),
     ]
-    cand_rows = [cand_hdr]
+    cand_rows: list[list[Any]] = [cand_hdr]
     for i, s in enumerate(sorted_students, 1):
         best_role = "—"
         if s.get("recommended_roles"):
@@ -866,7 +911,7 @@ def _build_live_report_pdf(students: list, batch_name: str, course_name: str, ef
         "Footer", parent=styles["Normal"],
         fontSize=7, textColor=colors.HexColor("#94A3B8"), alignment=TA_CENTER,
     )
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#E2E8F0")))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#E2E8F0")))
     story.append(Spacer(1, 0.2 * cm))
     story.append(Paragraph(
         f"Skill Bay Academy (Kauvery Hospital) · CCDP Placement Report · {batch_name} · Generated by SkillBay AI",
@@ -882,6 +927,7 @@ def _build_live_report_pdf(students: list, batch_name: str, course_name: str, ef
 async def live_report_pdf(
     payload: dict,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     """Generate a live-session PDF report from uploaded student analysis data."""
     students = payload.get("students", [])
@@ -893,12 +939,14 @@ async def live_report_pdf(
     if not students:
         raise HTTPException(400, "No student data provided")
 
+    from datetime import datetime
+    date_str = datetime.now().strftime("%Y%m%d")
     buffer = _build_live_report_pdf(students, batch_name, course_name, effort)
     safe_batch = batch_name.replace(" ", "_").replace("/", "-")
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}_{date_str}.pdf"'},
     )
 
 
@@ -906,8 +954,11 @@ async def live_report_pdf(
 async def live_report_image(
     payload: dict,
     db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
 ):
     """Generate a live-session PNG image of the report (renders first page of PDF as image)."""
+    from datetime import datetime
+    date_str = datetime.now().strftime("%Y%m%d")
     students = payload.get("students", [])
     batch_name = payload.get("batch_name", "Live Session")
     course_name = payload.get("course_name", "CCDP")
@@ -929,7 +980,7 @@ async def live_report_image(
         return StreamingResponse(
             img_buffer,
             media_type="image/png",
-            headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}.png"'},
+            headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}_{date_str}.png"'},
         )
     except ImportError:
         # pdf2image not installed — return the PDF instead
@@ -938,5 +989,5 @@ async def live_report_image(
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}.pdf"'},
+            headers={"Content-Disposition": f'attachment; filename="CCDP_Live_Report_{safe_batch}_{date_str}.pdf"'},
         )

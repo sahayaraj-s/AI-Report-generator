@@ -1,21 +1,10 @@
 ai-placement-dashboard/
 ├── .vscode/
 │   └── settings.json
-├── README.md
 ├── backend/
-│   ├── .env
-│   ├── .env.example
-│   ├── .gitignore
 │   ├── .vscode/
 │   │   └── settings.json
-│   ├── README.md
 │   ├── app/
-│   │   ├── __init__.py
-│   │   ├── auth.py
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── main.py
-│   │   ├── models.py
 │   │   ├── routers/
 │   │   │   ├── __init__.py
 │   │   │   ├── admin.py
@@ -26,67 +15,124 @@ ai-placement-dashboard/
 │   │   │   ├── reports.py
 │   │   │   ├── students.py
 │   │   │   └── upload.py
-│   │   ├── schemas.py
-│   │   └── services/
-│   │       ├── __init__.py
-│   │       ├── ai_service.py
-│   │       ├── chat_service.py
-│   │       ├── job_roles.py
-│   │       ├── pipeline.py
-│   │       ├── scoring.py
-│   │       └── upload_processing.py
-│   ├── package.json
-│   ├── placement.db
-│   ├── pyrightconfig.json
-│   ├── requirements.txt
-│   ├── run.py
-│   ├── test_all_endpoints.py
-│   └── test_api.py
-├── frontend/
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   ├── ai_service.py
+│   │   │   ├── chat_service.py
+│   │   │   ├── job_roles.py
+│   │   │   ├── pipeline.py
+│   │   │   ├── scoring.py
+│   │   │   └── upload_processing.py
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── main.py
+│   │   ├── models.py
+│   │   └── schemas.py
+│   ├── .dockerignore
 │   ├── .env
 │   ├── .env.example
 │   ├── .gitignore
-│   ├── README.md
-│   ├── index.html
-│   ├── package-lock.json
+│   ├── copy_sqlite_to_postgres.py
+│   ├── Dockerfile
+│   ├── export_diagrams.py
+│   ├── generate_pdf_report.py
+│   ├── import_ccdp2.py
+│   ├── loader.py
+│   ├── metrics.py
+│   ├── migrate.py
+│   ├── output_jayasree_report.pdf
+│   ├── output_kasthuri_report.pdf
 │   ├── package.json
-│   ├── postcss.config.js
+│   ├── pdf_generator.py
+│   ├── placement.db
+│   ├── Procfile
+│   ├── pyrightconfig.json
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── run.py
+│   ├── schema_detector.py
+│   ├── test_all_endpoints.py
+│   ├── test_api.py
+│   ├── test_live_system.py
+│   ├── test_loader_metrics.py
+│   ├── test_pdf_report.py
+│   └── test_security_and_new_features.py
+├── frontend/
 │   ├── public/
 │   │   └── logo.png
 │   ├── src/
-│   │   ├── App.jsx
 │   │   ├── assets/
 │   │   ├── components/
+│   │   │   ├── ui/
+│   │   │   │   ├── Badge.jsx
+│   │   │   │   ├── Button.jsx
+│   │   │   │   ├── Card.jsx
+│   │   │   │   ├── PowerBiGauge.jsx
+│   │   │   │   ├── PowerBiKpiCard.jsx
+│   │   │   │   └── StatCard.jsx
 │   │   │   ├── Layout.jsx
 │   │   │   ├── MiniChatbot.jsx
 │   │   │   ├── ProtectedRoute.jsx
 │   │   │   ├── Sidebar.jsx
-│   │   │   ├── Topbar.jsx
-│   │   │   └── ui/
-│   │   │       ├── Badge.jsx
-│   │   │       ├── Button.jsx
-│   │   │       ├── Card.jsx
-│   │   │       └── StatCard.jsx
+│   │   │   └── Topbar.jsx
 │   │   ├── context/
 │   │   │   ├── AuthContext.jsx
 │   │   │   └── ThemeContext.jsx
-│   │   ├── index.css
 │   │   ├── lib/
 │   │   │   ├── api.js
 │   │   │   └── firebase.js
-│   │   ├── main.jsx
-│   │   └── pages/
-│   │       ├── DashboardOverview.jsx
-│   │       ├── JobRoles.jsx
-│   │       ├── Login.jsx
-│   │       ├── Settings.jsx
-│   │       ├── SkillBayAI.jsx
-│   │       ├── StudentProfile.jsx
-│   │       ├── StudentsDirectory.jsx
-│   │       └── UploadStudentData.jsx
+│   │   ├── pages/
+│   │   │   ├── DashboardOverview.jsx
+│   │   │   ├── JobRoles.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Settings.jsx
+│   │   │   ├── SkillBayAI.jsx
+│   │   │   ├── StudentProfile.jsx
+│   │   │   ├── StudentsDirectory.jsx
+│   │   │   └── UploadStudentData.jsx
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── .dockerignore
+│   ├── .env
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── index.html
+│   ├── nginx.conf
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── README.md
 │   ├── tailwind.config.js
+│   ├── vercel.json
 │   └── vite.config.js
+├── Template/
+│   └── Sample Student_Dashboard_Report.pdf.pdf
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── Architecture_Diagram.png
+├── Complete Project Analysis Report.pdf
+├── Complete_Project_Analysis_Report.md
+├── Data_Flow_Diagram.png
+├── Database_ER_Diagram.png
+├── DEPLOYMENT.md
+├── docker-compose.yml
+├── nginx.conf
 ├── package.json
+├── placement.db
+├── project_structure.txt
 ├── pyrightconfig.json
+├── README.md
+├── render.yaml
 ├── run_backend.bat
-└── run_frontend.bat
+├── run_frontend.bat
+├── sample_pdf_text.txt
+├── sample_students.csv
+├── step0_request.txt
+├── Students Complete Details - CCDP 2(1).xlsx
+├── Students Complete Details - CCDP 2(1)_schema_manifest.json
+└── vercel.json

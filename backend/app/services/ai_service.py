@@ -130,7 +130,8 @@ async def generate_gemini_report(
         return generate_local_report(student_name, overall, strengths, weaknesses, top_roles)
 
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
+        timeout_val = getattr(settings, "gemini_timeout_seconds", 8.0)
+        async with httpx.AsyncClient(timeout=timeout_val) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()

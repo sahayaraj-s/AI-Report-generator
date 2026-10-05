@@ -19,7 +19,9 @@ export default function App() {
       <Route path="/students/:id" element={<ProtectedRoute><StudentProfile /></ProtectedRoute>} />
       <Route path="/jobs" element={<ProtectedRoute><JobRoles /></ProtectedRoute>} />
       <Route path="/ai-assistant" element={<ProtectedRoute><SkillBayAI /></ProtectedRoute>} />
+      <Route path="/ai" element={<ProtectedRoute><SkillBayAI /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
     </Routes>
   );
 }

@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Download, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Download, Sparkles, Trash2, AlertTriangle } from "lucide-react";
 import {
   ResponsiveContainer,
   RadarChart,
@@ -16,9 +17,59 @@ import { Button } from "../components/ui/Button";
 import { api } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
+/* ─── Delete Confirmation Modal ──────────────────────────────────────────── */
+function DeleteProfileModal({ isOpen, studentName, onConfirm, onCancel, isDeleting, errorMessage }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-surface-elevated border border-danger/30 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center shrink-0">
+            <Trash2 size={20} />
+          </div>
+          <div>
+            <h3 className="font-display font-semibold text-ink text-base">Delete Student</h3>
+            <p className="text-xs text-ink-muted">Permanent removal from system</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-ink-muted leading-relaxed">
+          Are you sure you want to permanently delete <strong className="text-ink font-semibold">{studentName}</strong>?
+          All associated skill assessments and AI placement reports will be wiped.
+        </p>
+
+        {errorMessage && (
+          <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-xs text-danger flex items-center gap-2">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2.5 pt-2">
+          <Button variant="secondary" onClick={onCancel} disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-danger hover:bg-danger/90 text-white font-medium"
+            onClick={onConfirm}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting…" : "Yes, Delete Student"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StudentProfile() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { theme } = useTheme();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const gridStroke = theme === "dark" ? "#34323A" : "#E2E8F0";
   const axisStroke = theme === "dark" ? "#A6A1AC" : "#475569";
   const radiusStroke = theme === "dark" ? "#716C7A" : "#94A3B8";
@@ -27,6 +78,22 @@ export default function StudentProfile() {
     queryKey: ["student", id],
     queryFn: async () => (await api.get(`/api/students/${id}`)).data,
   });
+
+  const handleDeleteStudent = async () => {
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await api.delete(`/api/students/${id}`);
+      await queryClient.invalidateQueries({ queryKey: ["students"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      await queryClient.invalidateQueries({ queryKey: ["batches"] });
+      navigate("/students");
+    } catch (err) {
+      console.error("Delete failed:", err);
+      setDeleteError(err.response?.data?.detail || err.message || "Failed to delete student.");
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Layout title="Student Profile" subtitle="Full performance breakdown and AI-generated guidance.">
@@ -71,6 +138,15 @@ export default function StudentProfile() {
                 Download PDF Report
               </Button>
             </a>
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              className="mt-3 w-full py-2.5 px-4 rounded-xl border border-danger/30 text-danger hover:bg-danger/10 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Trash2 size={14} />
+              Delete Student
+            </button>
           </Card>
 
           <div className="lg:col-span-2 space-y-5">
@@ -207,6 +283,16 @@ export default function StudentProfile() {
           </div>
         </div>
       )}
+
+      {/* Delete confirmation modal */}
+      <DeleteProfileModal
+        isOpen={showDeleteModal}
+        studentName={data?.student?.name}
+        onConfirm={handleDeleteStudent}
+        onCancel={() => { setShowDeleteModal(false); setDeleteError(""); }}
+        isDeleting={isDeleting}
+        errorMessage={deleteError}
+      />
     </Layout>
   );
 }

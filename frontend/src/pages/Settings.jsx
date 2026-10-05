@@ -257,6 +257,19 @@ export default function Settings() {
     },
   });
 
+  const cleanTestDataMutation = useMutation({
+    mutationFn: async () => (await api.post("/api/admin/clean-test-data")).data,
+    onSuccess: (res) => {
+      setCleanMessage(res.message);
+      queryClient.invalidateQueries();
+      setTimeout(() => setCleanMessage(""), 5000);
+    },
+    onError: (err) => {
+      setCleanMessage(err.response?.data?.detail || "Failed to clean test data.");
+      setTimeout(() => setCleanMessage(""), 5000);
+    },
+  });
+
   const handleSaveGeneral = (e) => {
     e.preventDefault();
     updateMutation.mutate({
@@ -764,6 +777,26 @@ export default function Settings() {
                     disabled={seedRolesMutation.isPending}
                   >
                     {seedRolesMutation.isPending ? "Seeding…" : "Seed Kauvery Hospital Roles"}
+                  </Button>
+                </div>
+
+                {/* Purge Test Data */}
+                <div className="p-4 rounded-xl border border-warning/30 bg-warning/5 space-y-3">
+                  <div className="flex items-center gap-2 font-medium text-warning text-sm">
+                    <Trash2 size={16} />
+                    <span>Purge Mock / Test Data</span>
+                  </div>
+                  <p className="text-xs text-ink-muted">
+                    Removes all test batches (e.g. 2024 Batch, 2025 Batch), test courses, and mock CSV uploads while safely
+                    preserving all 30 real CCDP 2 student records and assessments.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    className="w-full text-xs text-warning border-warning/40 hover:bg-warning/10"
+                    onClick={() => cleanTestDataMutation.mutate()}
+                    disabled={cleanTestDataMutation.isPending}
+                  >
+                    {cleanTestDataMutation.isPending ? "Purging…" : "Purge Test Data (Preserve CCDP 2)"}
                   </Button>
                 </div>
               </div>

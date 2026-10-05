@@ -1,0 +1,41 @@
+# Environment files (keep example tracked)
+.env
+.env.*
+.env.local
+!.env.example
+
+# SQLite & databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Python build & virtual environment
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+
+# Node & frontend build artifacts
+node_modules/
+dist/
+.vite/
+
+# Uploads & generated outputs
+uploads/
+output_*.pdf
+backend/output_*.pdf
+*_schema_manifest.json
+
+# Confidential student data and template fixtures
+Students Complete Details*.xlsx
+Students Complete Details*
+sample_pdf_text.txt
+step0_request.txt
+Template/
+
+# System & editor files
+.DS_Store
+Thumbs.db
+.idea/

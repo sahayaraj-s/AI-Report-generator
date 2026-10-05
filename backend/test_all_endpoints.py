@@ -2,10 +2,19 @@
 Comprehensive test suite verifying all Phase 2 backend endpoints.
 """
 import io
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi.testclient import TestClient
+from app.config import settings
 from app.main import app
 
+settings.dev_mode = True
+
 client = TestClient(app)
+AUTH_HEADERS = {"Authorization": "Bearer dev-mock-token"}
 
 SAMPLE_CSV = b"""Name,Roll No,Email,Course,Batch,Python,SQL,Communication,Problem Solving,Attendance %
 Aarav Sharma,CS001,aarav@example.com,Computer Science,2024 Batch,22,24,18,20,92
@@ -21,9 +30,10 @@ def test_all():
         "/api/upload/process",
         files={"file": ("sample.csv", io.BytesIO(SAMPLE_CSV), "text/csv")},
         data={"mode": "save", "course_name": "Computer Science", "batch_name": "2024 Batch", "overwrite": "true"},
+        headers=AUTH_HEADERS,
     )
     assert resp.status_code == 200, resp.text
-    print("Upload OK:", resp.json())
+    print("Upload OK: saved count =", resp.json().get("saved"))
 
     print("\n=== Testing Dashboard Stats & Batch Filter ===")
     resp = client.get("/api/dashboard/stats")
@@ -31,18 +41,18 @@ def test_all():
     stats = resp.json()
     assert stats["total_students"] >= 5
     assert "batch_list" in stats
-    print("Dashboard stats OK:", stats["total_students"], "students, batch_list:", stats["batch_list"])
+    print("Dashboard stats OK: total students =", stats["total_students"])
 
     # Test with batch filter
     resp_batch = client.get("/api/dashboard/stats?batch=2024%20Batch")
     assert resp_batch.status_code == 200
-    print("Filtered batch stats OK:", resp_batch.json()["total_students"], "students in 2024 Batch")
+    print("Filtered batch stats OK: count =", resp_batch.json()["total_students"])
 
     print("\n=== Testing Job Roles ===")
-    resp = client.get("/api/jobs/roles")
+    resp = client.get("/api/jobs/roles", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     roles = resp.json()
-    print("Total roles:", roles["total_roles"], "Total openings:", roles.get("total_openings"))
+    print("Total roles:", roles["total_roles"])
 
     # Create a structured job role
     new_role = {
@@ -57,74 +67,71 @@ def test_all():
         "is_active": True,
         "company_name": "Tech Corp",
     }
-    resp_create = client.post("/api/jobs/roles", json=new_role)
+    resp_create = client.post("/api/jobs/roles", json=new_role, headers=AUTH_HEADERS)
     if resp_create.status_code == 200:
         role_id = resp_create.json()["id"]
-        print("Created role with ID:", role_id)
         # Test candidates for role
-        resp_cand = client.get(f"/api/jobs/roles/{role_id}/candidates")
+        resp_cand = client.get(f"/api/jobs/roles/{role_id}/candidates", headers=AUTH_HEADERS)
         assert resp_cand.status_code == 200
-        print("Role candidates:", resp_cand.json()["total_candidates"], "matched")
+        print("Role candidates check OK: matched count =", resp_cand.json()["total_candidates"])
 
     print("\n=== Testing AI Chat Sessions ===")
     # Create session
-    resp_sess = client.post("/api/ai/sessions", json={"title": "Test Chat"})
+    resp_sess = client.post("/api/ai/sessions", json={"title": "Test Chat"}, headers=AUTH_HEADERS)
     assert resp_sess.status_code == 200
     session_id = resp_sess.json()["id"]
-    print("Created chat session ID:", session_id)
 
     # Send message
     resp_msg = client.post(
         f"/api/ai/sessions/{session_id}/messages",
-        json={"content": "How many students are placement ready?"}
+        json={"content": "How many students are placement ready?"},
+        headers=AUTH_HEADERS,
     )
     assert resp_msg.status_code == 200
-    print("AI Response:", resp_msg.json()["content"])
+    assert "content" in resp_msg.json()
 
     # Test templates
-    resp_tpl = client.get("/api/ai/templates")
+    resp_tpl = client.get("/api/ai/templates", headers=AUTH_HEADERS)
     assert resp_tpl.status_code == 200
     assert len(resp_tpl.json()["templates"]) > 0
-    print("Prompt templates count:", len(resp_tpl.json()["templates"]))
 
     print("\n=== Testing Reports Endpoints ===")
     # 1. Reports Meta
-    resp_meta = client.get("/api/reports/meta")
+    resp_meta = client.get("/api/reports/meta", headers=AUTH_HEADERS)
     assert resp_meta.status_code == 200
-    print("Reports meta:", len(resp_meta.json()["batches"]), "batches")
 
     # 2. Institute PDF
-    resp_inst = client.get("/api/reports/institute/pdf")
+    resp_inst = client.get("/api/reports/institute/pdf", headers=AUTH_HEADERS)
     assert resp_inst.status_code == 200
     assert resp_inst.headers["content-type"] == "application/pdf"
     assert len(resp_inst.content) > 500
-    print("Institute PDF size:", len(resp_inst.content), "bytes")
 
     # 3. Batch PDF
-    resp_batch_pdf = client.get("/api/reports/batch/pdf?batch=2024%20Batch")
+    resp_batch_pdf = client.get("/api/reports/batch/pdf?batch=2024%20Batch", headers=AUTH_HEADERS)
     assert resp_batch_pdf.status_code == 200
     assert resp_batch_pdf.headers["content-type"] == "application/pdf"
-    print("Batch PDF size:", len(resp_batch_pdf.content), "bytes")
 
     # 4. Batch CSV
-    resp_batch_csv = client.get("/api/reports/batch/csv?batch=2024%20Batch")
+    resp_batch_csv = client.get("/api/reports/batch/csv?batch=2024%20Batch", headers=AUTH_HEADERS)
     assert resp_batch_csv.status_code == 200
-    print("Batch CSV length:", len(resp_batch_csv.content), "bytes")
 
     # 5. Match Matrix PDF
-    resp_matrix = client.get("/api/reports/match/pdf")
+    resp_matrix = client.get("/api/reports/match/pdf", headers=AUTH_HEADERS)
     assert resp_matrix.status_code == 200
     assert resp_matrix.headers["content-type"] == "application/pdf"
-    print("Match Matrix PDF size:", len(resp_matrix.content), "bytes")
 
     # 6. Match Matrix CSV
-    resp_matrix_csv = client.get("/api/reports/match/csv")
+    resp_matrix_csv = client.get("/api/reports/match/csv", headers=AUTH_HEADERS)
     assert resp_matrix_csv.status_code == 200
-    print("Match Matrix CSV length:", len(resp_matrix_csv.content), "bytes")
+
+    # 7. Clean up test data so database remains pristine
+    resp_clean = client.post("/api/admin/clean-test-data", headers=AUTH_HEADERS)
+    assert resp_clean.status_code == 200
 
     print("\n==========================================")
     print(" ALL PHASE 2 BACKEND TESTS PASSED! ")
     print("==========================================")
+
 
 if __name__ == "__main__":
     test_all()

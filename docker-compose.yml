@@ -1,0 +1,84 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: skillbay_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skillbay}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skillbay_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-skillbay_placement}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-skillbay} -d ${POSTGRES_DB:-skillbay_placement}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skillbay_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DEV_MODE: ${DEV_MODE:-False}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-skillbay}:${POSTGRES_PASSWORD:-skillbay_secure_password}@db:5432/${POSTGRES_DB:-skillbay_placement}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL_DEFAULT: ${GEMINI_MODEL_DEFAULT:-gemini-3.6-flash}
+      GEMINI_MODEL_FAST: ${GEMINI_MODEL_FAST:-gemini-3.5-flash-lite}
+      GEMINI_MODEL_DEEP: ${GEMINI_MODEL_DEEP:-gemini-2.5-pro}
+      GEMINI_FALLBACKS: ${GEMINI_FALLBACKS:-gemini-3.5-flash,gemini-3.1-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-8.0}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:80,http://localhost}
+
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+    expose:
+      - "8000"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: skillbay_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"
+    ports:
+      - "80:80"
+
+  # Optional VPS reverse proxy with HTTPS/Certbot
+  # Run with: docker compose --profile production up -d
+  reverse-proxy:
+    image: nginx:alpine
+    container_name: skillbay_nginx
+    restart: unless-stopped
+    profiles: ["production"]
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - certbot-challenge:/var/www/certbot
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  pgdata:
+  certbot-etc:
+  certbot-var:
+  certbot-challenge:

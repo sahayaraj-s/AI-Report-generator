@@ -35,6 +35,18 @@ class Institute(Base):
     # Editable scoring weights
     skill_weight_pct = Column(Float, default=75.0)
     attendance_weight_pct = Column(Float, default=25.0)
+    # Centralized thresholds & targets
+    readiness_cutoff = Column(Float, default=55.0)
+    readiness_target_pct = Column(Float, default=80.0)
+    attendance_target_pct = Column(Float, default=85.0)
+    score_benchmark = Column(Float, default=75.0)
+    typing_target_wpm = Column(Float, default=30.0)
+    tier_1_cutoff = Column(Float, default=80.0)
+    tier_2_cutoff = Column(Float, default=60.0)
+    tier_3_cutoff = Column(Float, default=40.0)
+    fit_perfect_cutoff = Column(Float, default=75.0)
+    fit_medium_cutoff = Column(Float, default=55.0)
+    fit_low_cutoff = Column(Float, default=35.0)
     created_at = Column(DateTime, default=now)
 
 
@@ -81,8 +93,21 @@ class Student(Base):
     batch_id = Column(Integer, ForeignKey("batches.id"))
 
     attendance_pct = Column(Float, default=0.0)
+    attendance_status = Column(String, default="tracked")  # "tracked" or "N/A"
+    attendance_reason = Column(String, nullable=True)
     overall_score = Column(Float, default=0.0)
-    placement_ready = Column(Boolean, default=False)
+    placement_ready = Column(Boolean, default=False)  # score-based qualification
+
+    # Actual placement outcome (from placement sheet)
+    is_placed = Column(Boolean, default=False)
+    placement_company = Column(String, nullable=True)
+    placement_designation = Column(String, nullable=True)
+    placement_salary = Column(String, nullable=True)
+    placement_salary_num = Column(Float, default=0.0)
+
+    # Metric & Compliance columns
+    typing_wpm = Column(Float, nullable=True)
+    compliance_json = Column(Text, nullable=True)  # JSON for uniform/sizes
 
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
@@ -204,6 +229,8 @@ class AIChatMessage(Base):
     session_id = Column(Integer, ForeignKey("ai_chat_sessions.id"))
     role = Column(String, nullable=False)   # "user" | "assistant"
     content = Column(Text, nullable=False)
+    source = Column(String, default="gemini")  # "gemini" | "local"
+    model = Column(String, default="gemini-3.6-flash")
     created_at = Column(DateTime, default=now)
 
     session = relationship("AIChatSession", back_populates="messages")

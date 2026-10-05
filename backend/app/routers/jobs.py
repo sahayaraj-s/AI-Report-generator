@@ -4,17 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.auth import get_current_admin
 from app.models import Student, AnalysisResult, JobRoleModel
 from app.services.job_roles import (
     get_all_job_roles, get_active_job_roles,
-    get_role_candidates, _parse_skill_criteria, KAUVERY_UNITS, DEPARTMENTS, JobRole
+    get_role_candidates, _parse_skill_criteria, auto_detect_roles_from_skills,
+    KAUVERY_UNITS, DEPARTMENTS, JobRole
 )
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
 @router.get("/roles")
-def list_roles(db: Session = Depends(get_db)):
+def list_roles(db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     """Return all defined job roles with Kauvery Hospital Units, Departments, structured skills, and match stats."""
     job_roles = get_all_job_roles(db)
     analysis_rows = db.query(AnalysisResult).order_by(AnalysisResult.created_at.desc()).all()
@@ -87,7 +89,7 @@ def list_roles(db: Session = Depends(get_db)):
 
 
 @router.post("/roles")
-def create_role(payload: dict = Body(...), db: Session = Depends(get_db)):
+def create_role(payload: dict = Body(...), db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     name = payload.get("name", "").strip()
     skill_criteria = payload.get("skill_criteria", [])
     required_skills_raw = payload.get("required_skills", [])
@@ -152,7 +154,7 @@ def create_role(payload: dict = Body(...), db: Session = Depends(get_db)):
 
 
 @router.put("/roles/{role_id}")
-def update_role(role_id: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+def update_role(role_id: int, payload: dict = Body(...), db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     role = db.query(JobRoleModel).get(role_id)
     if not role:
         raise HTTPException(404, "Role not found")
@@ -204,7 +206,7 @@ def update_role(role_id: int, payload: dict = Body(...), db: Session = Depends(g
 
 
 @router.patch("/roles/{role_id}/toggle")
-def toggle_role_active(role_id: int, db: Session = Depends(get_db)):
+def toggle_role_active(role_id: int, db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     role = db.query(JobRoleModel).get(role_id)
     if not role:
         raise HTTPException(404, "Role not found")
@@ -214,7 +216,7 @@ def toggle_role_active(role_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/roles/{role_id}")
-def delete_role(role_id: int, db: Session = Depends(get_db)):
+def delete_role(role_id: int, db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     role = db.query(JobRoleModel).get(role_id)
     if not role:
         raise HTTPException(404, "Role not found")
@@ -224,7 +226,7 @@ def delete_role(role_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/roles/{role_id}/candidates")
-def role_candidates(role_id: int, db: Session = Depends(get_db)):
+def role_candidates(role_id: int, db: Session = Depends(get_db), admin: dict = Depends(get_current_admin)):
     """Get students matched to this role classified by fit tier."""
     db_role = db.query(JobRoleModel).get(role_id)
     if not db_role:
@@ -266,7 +268,7 @@ def role_candidates(role_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/roles/auto-detect")
-def auto_detect_roles(payload: dict = Body(...)):
+def auto_detect_roles(payload: dict = Body(...), admin: dict = Depends(get_current_admin)):
     detected_skills = payload.get("detected_skills", [])
     suggested = auto_detect_roles_from_skills(detected_skills)
     return {"suggested_roles": suggested}

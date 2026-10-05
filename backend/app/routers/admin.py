@@ -8,7 +8,7 @@ from app.models import AnalysisResult, ActivityLog, Batch, Course, Institute, Jo
 from app.services.job_roles import KAUVERY_UNITS, DEPARTMENTS, _get_default_kauvery_roles
 from app.services.upload_processing import _is_non_skill_column, extract_skill_meta
 from app.services import scoring, job_roles as job_roles_svc
-from app.services.ai_service import generate_ai_report
+from app.auth import get_current_admin
 from app.config import settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -49,7 +49,7 @@ def _parse_departments(institute: Institute) -> list[str]:
 
 
 @router.get("/settings")
-def get_admin_settings(db: Session = Depends(get_db)):
+def get_admin_settings(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     institute = _get_or_create_institute(db)
     skill_w = institute.skill_weight_pct if institute.skill_weight_pct is not None else 75.0
     att_w = institute.attendance_weight_pct if institute.attendance_weight_pct is not None else 25.0
@@ -63,7 +63,18 @@ def get_admin_settings(db: Session = Depends(get_db)):
         "gemini_model": settings.gemini_model,
         "gemini_api_key_configured": bool(settings.gemini_api_key),
         "kauvery_first_preference": True,
-        "placement_readiness_threshold": 55,
+        "placement_readiness_threshold": institute.readiness_cutoff if institute.readiness_cutoff is not None else 55.0,
+        "readiness_cutoff": institute.readiness_cutoff if institute.readiness_cutoff is not None else 55.0,
+        "readiness_target_pct": institute.readiness_target_pct if institute.readiness_target_pct is not None else 80.0,
+        "attendance_target_pct": institute.attendance_target_pct if institute.attendance_target_pct is not None else 85.0,
+        "score_benchmark": institute.score_benchmark if institute.score_benchmark is not None else 75.0,
+        "typing_target_wpm": institute.typing_target_wpm if institute.typing_target_wpm is not None else 30.0,
+        "tier_1_cutoff": institute.tier_1_cutoff if institute.tier_1_cutoff is not None else 80.0,
+        "tier_2_cutoff": institute.tier_2_cutoff if institute.tier_2_cutoff is not None else 60.0,
+        "tier_3_cutoff": institute.tier_3_cutoff if institute.tier_3_cutoff is not None else 40.0,
+        "fit_perfect_cutoff": institute.fit_perfect_cutoff if institute.fit_perfect_cutoff is not None else 75.0,
+        "fit_medium_cutoff": institute.fit_medium_cutoff if institute.fit_medium_cutoff is not None else 55.0,
+        "fit_low_cutoff": institute.fit_low_cutoff if institute.fit_low_cutoff is not None else 35.0,
         "skill_weight_pct": skill_w,
         "attendance_weight_pct": att_w,
         "kauvery_units": _parse_units(institute),
@@ -72,7 +83,7 @@ def get_admin_settings(db: Session = Depends(get_db)):
 
 
 @router.post("/settings")
-def update_admin_settings(payload: dict = Body(...), db: Session = Depends(get_db)):
+def update_admin_settings(payload: dict = Body(...), db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     institute = _get_or_create_institute(db)
 
     if "institute_name" in payload:
@@ -103,13 +114,31 @@ def update_admin_settings(payload: dict = Body(...), db: Session = Depends(get_d
         institute.skill_weight_pct = round(sw, 1)
         institute.attendance_weight_pct = round(aw, 1)
 
+    # Editable threshold settings
+    for field_name in (
+        "readiness_cutoff", "readiness_target_pct", "attendance_target_pct",
+        "score_benchmark", "typing_target_wpm", "tier_1_cutoff", "tier_2_cutoff",
+        "tier_3_cutoff", "fit_perfect_cutoff", "fit_medium_cutoff", "fit_low_cutoff"
+    ):
+        if field_name in payload and payload[field_name] is not None:
+            try:
+                setattr(institute, field_name, float(payload[field_name]))
+            except (ValueError, TypeError):
+                pass
+
+    if "placement_readiness_threshold" in payload and payload["placement_readiness_threshold"] is not None:
+        try:
+            institute.readiness_cutoff = float(payload["placement_readiness_threshold"])
+        except (ValueError, TypeError):
+            pass
+
     db.commit()
     db.refresh(institute)
     return {"message": "Settings updated successfully", "status": "success"}
 
 
 @router.get("/notifications")
-def get_notifications(db: Session = Depends(get_db)):
+def get_notifications(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     """Returns recent activity for the dashboard notification bell."""
     uploads = (
         db.query(Upload)
@@ -148,90 +177,76 @@ def get_notifications(db: Session = Depends(get_db)):
 
 
 @router.post("/clean-legacy-skills")
-async def clean_legacy_skills(db: Session = Depends(get_db)):
+async def clean_legacy_skills(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     """
     Cleans up any legacy non-skill entries from skills table and student_scores
-    (e.g., 'Parents No.', 'Age', 'Personal No.', 'Contact No.') and recalculates
-    clean CCDP scores and analysis for all students.
+    (e.g., Shirt, Trouser, Tie, Shoe Size, Total, Typing Speed, phone numbers, age)
+    and recalculates clean CCDP scores and analysis for all students using analytics.
     """
-    # 1. Delete non-skills
+    from app.services.column_classifier import classify_column
+    from app.services.analytics import compute_student_metrics, get_threshold_settings, load_students_from_db
+
     all_skills = db.query(Skill).all()
     deleted_count = 0
-    valid_skills = []
 
     for s in all_skills:
-        if _is_non_skill_column(s.name) or s.name.strip().lower() in ("total", "marks", "grade", "gpa"):
+        c_class = classify_column(s.name)
+        is_invalid = s.name.startswith("Unnamed:") or c_class != "skill" or s.name.strip().lower() in ("total", "marks", "grade", "gpa")
+        if is_invalid:
+            # If it's a compliance or metric column, preserve data in student fields
+            scores = db.query(StudentScore).filter_by(skill_id=s.id).all()
+            for sc in scores:
+                st = db.query(Student).get(sc.student_id)
+                if st:
+                    if c_class == "compliance":
+                        comp = json.loads(st.compliance_json or "{}")
+                        comp[s.name] = str(sc.score)
+                        st.compliance_json = json.dumps(comp)
+                    elif c_class == "metric":
+                        if sc.score > 0 and (st.typing_wpm is None or st.typing_wpm == 0):
+                            st.typing_wpm = sc.score
+
             db.query(StudentScore).filter_by(skill_id=s.id).delete()
             db.delete(s)
             deleted_count += 1
-        else:
-            valid_skills.append(s)
 
     db.commit()
 
-    # 2. Group valid skills by clean canonical name
-    from collections import defaultdict
-    canonical_groups = defaultdict(list)
-    for s in db.query(Skill).all():
-        clean_name, _ = extract_skill_meta(s.name)
-        canonical_groups[clean_name].append(s)
-
-    for clean_name, group in canonical_groups.items():
-        primary_skill = group[0]
-        # Temporary unique rename to prevent collisions
-        primary_skill.name = f"__canonical_{primary_skill.id}__"
-        db.flush()
-
-        for duplicate_skill in group[1:]:
-            dup_scores = db.query(StudentScore).filter_by(skill_id=duplicate_skill.id).all()
-            for sc in dup_scores:
-                existing_sc = db.query(StudentScore).filter_by(
-                    student_id=sc.student_id, skill_id=primary_skill.id
-                ).first()
-                if existing_sc:
-                    existing_sc.score = max(existing_sc.score, sc.score)
-                    db.delete(sc)
-                else:
-                    sc.skill_id = primary_skill.id
-            db.delete(duplicate_skill)
-            deleted_count += 1
-
-    db.commit()
-
-    # Now set final clean names
-    for clean_name, group in canonical_groups.items():
-        primary_skill = db.query(Skill).get(group[0].id)
-        if primary_skill:
-            primary_skill.name = clean_name
-    db.commit()
-
-    # 3. Recalculate scores and analysis for all existing students
-    institute = _get_or_create_institute(db)
-    skill_w = (institute.skill_weight_pct or 75.0) / 100.0
-    att_w = (institute.attendance_weight_pct or 25.0) / 100.0
-
+    # Recalculate scores and analysis for all existing students
+    cfg = get_threshold_settings(db)
     students = db.query(Student).all()
     recalculated_count = 0
 
     for st in students:
         scores_raw = db.query(StudentScore).filter_by(student_id=st.id).all()
-        skill_scores = {}
-        for sr in scores_raw:
-            score_val = sr.score
-            if score_val <= 10.0 and score_val > 0:
-                score_val = score_val * 10.0
-            sr.score = round(min(max(score_val, 0.0), 100.0), 1)
-            skill_scores[sr.skill.name] = sr.score
+        skill_scores = {sr.skill.name: sr.score for sr in scores_raw if classify_column(sr.skill.name) == "skill"}
 
-        st.overall_score = scoring.overall_score(skill_scores, st.attendance_pct, skill_w, att_w)
-        top_roles = job_roles_svc.match_job_roles(skill_scores, st.overall_score, db=db)
-        top_conf = top_roles[0]["confidence"] if top_roles else 0.0
-        readiness = scoring.placement_readiness_pct(st.overall_score, st.attendance_pct, top_conf)
-        st.placement_ready = readiness >= 55.0
+        raw_data = {
+            "id": st.id,
+            "name": st.name,
+            "roll_number": st.roll_number,
+            "email": st.email,
+            "phone": st.phone,
+            "course": st.course.name if st.course else None,
+            "batch": st.batch.name if st.batch else None,
+            "skill_scores": skill_scores,
+            "attendance_pct": st.attendance_pct,
+            "attendance_status": st.attendance_status,
+            "attendance_reason": st.attendance_reason,
+            "is_placed": st.is_placed,
+            "placement_company": st.placement_company,
+            "placement_designation": st.placement_designation,
+            "placement_salary": st.placement_salary,
+            "placement_salary_num": st.placement_salary_num,
+            "typing_wpm": st.typing_wpm,
+            "compliance": json.loads(st.compliance_json or "{}"),
+        }
 
-        strengths, weaknesses = scoring.strengths_and_weaknesses(skill_scores)
-        ai_report = await generate_ai_report(st.name, st.overall_score, strengths, weaknesses, top_roles)
+        computed = compute_student_metrics(raw_data, cfg, db=db)
+        st.overall_score = computed["overall_score"]
+        st.placement_ready = computed["placement_ready"]
 
+        # Update AnalysisResult
         analysis = (
             db.query(AnalysisResult)
             .filter_by(student_id=st.id)
@@ -242,18 +257,13 @@ async def clean_legacy_skills(db: Session = Depends(get_db)):
             analysis = AnalysisResult(student_id=st.id)
             db.add(analysis)
 
-        analysis.overall_score = st.overall_score
-        analysis.placement_readiness_pct = readiness
-        analysis.strengths = json.dumps(strengths)
-        analysis.weaknesses = json.dumps(weaknesses)
-        analysis.recommended_roles = json.dumps(top_roles)
-        analysis.salary_range = scoring.predict_salary_band(st.overall_score)
-        analysis.interview_readiness = scoring.interview_readiness_label(st.overall_score)
-        analysis.learning_roadmap = ai_report["learning_roadmap"]
-        analysis.thirty_day_plan = ai_report["thirty_day_plan"]
-        analysis.recommended_certifications = json.dumps(ai_report["recommended_certifications"])
-        analysis.ai_summary = ai_report["ai_summary"]
-        analysis.ai_source = ai_report["ai_source"]
+        analysis.overall_score = computed["overall_score"]
+        analysis.placement_readiness_pct = computed["placement_readiness_pct"]
+        analysis.strengths = json.dumps(computed["strengths"])
+        analysis.weaknesses = json.dumps(computed["weaknesses"])
+        analysis.recommended_roles = json.dumps(computed["role_matches"])
+        analysis.salary_range = scoring.predict_salary_band(computed["overall_score"])
+        analysis.interview_readiness = scoring.interview_readiness_label(computed["overall_score"])
 
         recalculated_count += 1
 
@@ -266,7 +276,7 @@ async def clean_legacy_skills(db: Session = Depends(get_db)):
 
 
 @router.post("/seed-kauvery-roles")
-def seed_kauvery_roles(db: Session = Depends(get_db)):
+def seed_kauvery_roles(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     """Pre-seeds standard Kauvery Hospital placement roles."""
     defaults = _get_default_kauvery_roles()
     seeded = 0
@@ -294,7 +304,7 @@ def seed_kauvery_roles(db: Session = Depends(get_db)):
 
 
 @router.post("/clear-data")
-def clear_all_data(db: Session = Depends(get_db)):
+def clear_all_data(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     """
     Wipes all student records, scores, analysis results, courses, batches, and uploads
     to start with a clean state.
@@ -309,3 +319,49 @@ def clear_all_data(db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "All student data and uploads have been cleared successfully."}
+
+
+@router.post("/clean-test-data")
+def clean_test_data(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+    """
+    Deletes all mock/test data (e.g. 2024 Batch, 2025 Batch, test sample uploads),
+    preserving the real CCDP 2 student cohort.
+    """
+    # Find test batches (anything not named CCDP 2)
+    test_batches = db.query(Batch).filter(Batch.name != "CCDP 2").all()
+    test_batch_ids = [b.id for b in test_batches]
+
+    # Students belonging to test batches or without a batch
+    test_students = db.query(Student).filter(
+        (Student.batch_id.in_(test_batch_ids)) | (Student.batch_id.is_(None))
+    ).all()
+    test_student_ids = [s.id for s in test_students]
+
+    if test_student_ids:
+        db.query(StudentScore).filter(StudentScore.student_id.in_(test_student_ids)).delete(synchronize_session=False)
+        db.query(AnalysisResult).filter(AnalysisResult.student_id.in_(test_student_ids)).delete(synchronize_session=False)
+        db.query(Student).filter(Student.id.in_(test_student_ids)).delete(synchronize_session=False)
+
+    for b in test_batches:
+        db.delete(b)
+
+    # Delete test courses (anything not containing CCDP)
+    test_courses = db.query(Course).filter(~Course.name.contains("CCDP")).all()
+    for c in test_courses:
+        db.delete(c)
+
+    # Delete test uploads (sample.csv, sample_students.csv)
+    test_uploads = db.query(Upload).filter(
+        Upload.filename.in_(["sample.csv", "sample_students.csv"])
+    ).all()
+    for u in test_uploads:
+        db.delete(u)
+
+    db.add(ActivityLog(action="clean_test_data", detail=f"Cleaned {len(test_student_ids)} test students and {len(test_batches)} test batches"))
+    db.commit()
+
+    return {
+        "message": f"Successfully purged {len(test_student_ids)} test students, {len(test_batches)} test batches, and test uploads. CCDP 2 cohort is fully preserved.",
+        "deleted_students": len(test_student_ids),
+        "deleted_batches": len(test_batches),
+    }

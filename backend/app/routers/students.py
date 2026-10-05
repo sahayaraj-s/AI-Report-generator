@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_admin
 from app.database import get_db
-from app.models import AnalysisResult, Batch, Course, Student, StudentScore
+from app.models import ActivityLog, AnalysisResult, Batch, Course, Student, StudentScore
 
 router = APIRouter(prefix="/api/students", tags=["students"])
 
@@ -150,12 +150,20 @@ def get_student_profile(student_id: int, db: Session = Depends(get_db), admin=De
 
 @router.delete("/{student_id}")
 def delete_student(student_id: int, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
-    student = db.query(Student).get(student_id)
+    student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(404, "Student not found")
-    db.delete(student)
-    db.commit()
-    return {"deleted": True}
+    name = student.name
+    try:
+        db.query(StudentScore).filter(StudentScore.student_id == student_id).delete(synchronize_session=False)
+        db.query(AnalysisResult).filter(AnalysisResult.student_id == student_id).delete(synchronize_session=False)
+        db.delete(student)
+        db.add(ActivityLog(action="delete_student", detail=f"Deleted student {name} (ID: {student_id})"))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Failed to delete student: {str(e)}")
+    return {"deleted": True, "id": student_id, "name": name}
 
 
 @router.post("/bulk-delete")
@@ -164,14 +172,17 @@ def bulk_delete_students(payload: dict, db: Session = Depends(get_db), admin=Dep
     ids = payload.get("ids", [])
     if not ids:
         raise HTTPException(400, "No student IDs provided")
-    deleted = 0
-    for sid in ids:
-        student = db.query(Student).get(int(sid))
-        if student:
-            db.delete(student)
-            deleted += 1
-    db.commit()
-    return {"deleted": deleted}
+    try:
+        int_ids = [int(sid) for sid in ids]
+        db.query(StudentScore).filter(StudentScore.student_id.in_(int_ids)).delete(synchronize_session=False)
+        db.query(AnalysisResult).filter(AnalysisResult.student_id.in_(int_ids)).delete(synchronize_session=False)
+        deleted = db.query(Student).filter(Student.id.in_(int_ids)).delete(synchronize_session=False)
+        db.add(ActivityLog(action="bulk_delete_students", detail=f"Bulk deleted {deleted} students (IDs: {int_ids})"))
+        db.commit()
+        return {"deleted": deleted, "ids": int_ids}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Failed to bulk delete students: {str(e)}")
 
 
 @router.patch("/{student_id}")

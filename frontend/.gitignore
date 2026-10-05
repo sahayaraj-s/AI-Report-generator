@@ -1,3 +1,14 @@
+# Dependencies & build
 node_modules/
 dist/
+.vite/
+
+# Environment
 .env
+.env.*
+.env.local
+!.env.example
+
+# Logs & temp
+*.log
+.DS_Store

@@ -1,0 +1,27 @@
+.env
+.env.*
+.env.local
+!.env.example
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+__pycache__/
+*.py[cod]
+node_modules/
+dist/
+.vite/
+uploads/
+output_*.pdf
+*_schema_manifest.json
+Students Complete Details*.xlsx
+sample_pdf_text.txt
+step0_request.txt
+Template/
+tests/
+test_*.py
+backend/test_*.py
+export_diagrams.py
+generate_pdf_report.py
+backend/export_diagrams.py
+backend/generate_pdf_report.py

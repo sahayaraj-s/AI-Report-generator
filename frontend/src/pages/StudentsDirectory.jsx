@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Search, Eye, Trash2, Download, ArrowUpDown, FileText,
   FileSpreadsheet, X, CheckSquare, Square, MinusSquare,
-  Filter,
+  Filter, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { Card } from "../components/ui/Card";
@@ -20,6 +20,50 @@ const FIT_TONE = {
   "Low Fit": "warning",
   "Not Eligible": "neutral",
 };
+
+/* ─── Delete Confirmation Modal ──────────────────────────────────────────── */
+function DeleteConfirmModal({ target, onConfirm, onCancel, isDeleting }) {
+  if (!target) return null;
+  const isBulk = Array.isArray(target);
+  const count = isBulk ? target.length : 1;
+  const name = isBulk ? `${count} selected students` : target.name;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-surface-elevated border border-danger/30 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center shrink-0">
+            <Trash2 size={20} />
+          </div>
+          <div>
+            <h3 className="font-display font-semibold text-ink text-base">
+              {isBulk ? "Delete Selected Students" : "Delete Student"}
+            </h3>
+            <p className="text-xs text-ink-muted">Permanent removal from system</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-ink-muted leading-relaxed">
+          Are you sure you want to permanently delete <strong className="text-ink font-semibold">{name}</strong>?
+          All associated skill assessments and AI placement reports will be wiped.
+        </p>
+
+        <div className="flex items-center justify-end gap-2.5 pt-2">
+          <Button variant="secondary" onClick={onCancel} disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-danger hover:bg-danger/90 text-white font-medium"
+            onClick={onConfirm}
+            disabled={isDeleting}
+          >
+            {isDeleting ? "Deleting…" : "Yes, Delete"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ─── Export / Report Modal ──────────────────────────────────────────────── */
 function ReportModal({ onClose, selectedBatch, batches, selectedIds }) {
@@ -170,6 +214,9 @@ export default function StudentsDirectory() {
   const [page, setPage] = useState(1);
   const [showReportModal, setShowReportModal] = useState(false);
   const [selected, setSelected] = useState(new Set());
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notification, setNotification] = useState(null);
   const queryClient = useQueryClient();
 
   // Sync URL search param changes (e.g. from Topbar)
@@ -187,7 +234,7 @@ export default function StudentsDirectory() {
       if (batchFilter) params.batch = batchFilter;
       return (await api.get("/api/students", { params })).data;
     },
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   const { data: batchesData } = useQuery({
@@ -235,31 +282,75 @@ export default function StudentsDirectory() {
     else { setSortBy(col); setSortDir("asc"); }
   };
 
-  /* ── Single delete ─────────────────────────────────────────────────── */
-  const handleDelete = async (id, name) => {
-    if (!confirm(`Delete student "${name}"? This cannot be undone.`)) return;
-    await api.delete(`/api/students/${id}`);
-    const next = new Set(selected);
-    next.delete(id);
-    setSelected(next);
-    queryClient.invalidateQueries({ queryKey: ["students"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+  /* ── Delete Handlers ─────────────────────────────────────────────────── */
+  const handleDelete = (id, name) => {
+    setDeleteTarget({ id, name });
   };
 
-  /* ── Bulk delete ───────────────────────────────────────────────────── */
-  const handleBulkDelete = async () => {
-    const ids = Array.from(selected);
-    if (!confirm(`Delete ${ids.length} student${ids.length !== 1 ? "s" : ""}? This cannot be undone.`)) return;
-    await api.post("/api/students/bulk-delete", { ids });
-    setSelected(new Set());
-    queryClient.invalidateQueries({ queryKey: ["students"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+  const handleBulkDelete = () => {
+    if (selected.size === 0) return;
+    setDeleteTarget(Array.from(selected));
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      if (Array.isArray(deleteTarget)) {
+        const res = await api.post("/api/students/bulk-delete", { ids: deleteTarget });
+        setNotification({
+          type: "success",
+          message: `Successfully deleted ${res.data?.deleted ?? deleteTarget.length} students.`
+        });
+        setSelected(new Set());
+      } else {
+        await api.delete(`/api/students/${deleteTarget.id}`);
+        setNotification({
+          type: "success",
+          message: `Student "${deleteTarget.name}" has been deleted.`
+        });
+        const next = new Set(selected);
+        next.delete(deleteTarget.id);
+        setSelected(next);
+      }
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ["students"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      await queryClient.invalidateQueries({ queryKey: ["batches"] });
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      console.error("Delete failed:", err);
+      setNotification({
+        type: "error",
+        message: err.response?.data?.detail || err.message || "Failed to delete student. Please try again."
+      });
+      setTimeout(() => setNotification(null), 6000);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const selectedCount = selected.size;
 
   return (
     <Layout title="Students" subtitle="Search, filter, select, and manage every CCDP student record.">
+      {/* Notification feedback */}
+      {notification && (
+        <div className={`mb-4 px-4 py-3 rounded-xl border text-sm flex items-center justify-between transition-all ${
+          notification.type === "success"
+            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+            : "bg-danger/10 border-danger/30 text-danger"
+        }`}>
+          <div className="flex items-center gap-2">
+            {notification.type === "success" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+            <span>{notification.message}</span>
+          </div>
+          <button onClick={() => setNotification(null)} className="text-xs hover:underline ml-4">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Filters bar */}
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -403,7 +494,7 @@ export default function StudentsDirectory() {
                         </div>
                       ) : <span className="text-xs text-ink-faint">—</span>}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
                         <Link
                           to={`/students/${s.id}`}
@@ -424,9 +515,14 @@ export default function StudentsDirectory() {
                           <Download size={15} />
                         </a>
                         <button
-                          onClick={e => { e.stopPropagation(); handleDelete(s.id, s.name); }}
-                          className="h-8 w-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-danger hover:bg-danger/10"
-                          title="Delete"
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleDelete(s.id, s.name);
+                          }}
+                          className="h-8 w-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                          title="Delete student"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -468,6 +564,14 @@ export default function StudentsDirectory() {
           selectedIds={Array.from(selected)}
         />
       )}
+
+      {/* Delete confirmation modal */}
+      <DeleteConfirmModal
+        target={deleteTarget}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+        isDeleting={isDeleting}
+      />
     </Layout>
   );
 }
