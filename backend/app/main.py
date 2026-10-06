@@ -15,17 +15,24 @@ logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title="Skill Bay Academy — AI Placement Analytics API", version="2.0.0")
 
-# Parse allowed origins from environment variable (comma-separated)
-cors_origins_list = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-if not cors_origins_list:
-    cors_origins_list = ["http://localhost:5173"]
+# Parse allowed origins from environment variable (comma-separated), normalizing slashes
+raw_origins = [o.strip().rstrip("/") for o in settings.cors_origins.split(",") if o.strip()]
+default_origins = [
+    "https://skill-bay-ai.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+]
+cors_origins_list = list(dict.fromkeys(raw_origins + default_origins))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins_list,
+    allow_origin_regex=r"^https://([a-zA-Z0-9_-]+\.)?vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Type", "Content-Length"],
 )
 
 

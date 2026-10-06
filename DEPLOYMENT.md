@@ -45,22 +45,22 @@ This document provides complete, production-ready deployment instructions for th
 3. Configure the service:
    - **Name**: `skillbay-placement-backend`
    - **Root Directory**: `backend`
-   - **Runtime**: `Python 3`
+   - **Runtime**: `Python 3` (Native Python, do not select Docker)
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
    - **Health Check Path**: `/api/health`
 4. Set Environment Variables in the Render Dashboard:
    | Variable | Value | Notes |
    | :--- | :--- | :--- |
-   | `DEV_MODE` | `False` | **CRITICAL**: Enables Firebase auth verification |
-   | `DATABASE_URL` | `postgresql+psycopg2://...` | Connection string from Neon/Supabase |
+   | `DEV_MODE` | `False` | **CRITICAL**: Enables Firebase auth verification in production |
+   | `DATABASE_URL` | `postgresql+psycopg2://...` | Connection string from Neon/Supabase/Render Postgres |
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | `{"type":"service_account",...}` | Single-line JSON from Firebase Console |
    | `GEMINI_API_KEY` | `AIzaSy...` | API key from Google AI Studio |
-   | `GEMINI_MODEL` | `gemini-1.5-flash` | Gemini model identifier |
-   | `GEMINI_TIMEOUT_SECONDS` | `8.0` | Timeout before fallback to local engine |
-   | `CORS_ORIGINS` | `https://your-frontend.vercel.app` | Comma-separated allowed frontend URLs |
-   | `FRONTEND_ORIGIN` | `https://your-frontend.vercel.app` | Production frontend URL |
-   | `PYTHON_VERSION` | `3.11.9` | Pinned Python runtime |
+   | `GEMINI_MODEL` | `gemini-2.5-flash` | Primary Gemini model identifier |
+   | `GEMINI_TIMEOUT_SECONDS` | `20.0` | Timeout before fallback to local engine |
+   | `CORS_ORIGINS` | `https://skill-bay-ai.vercel.app,http://localhost:5173` | Allowed origins (no trailing slash) |
+   | `FRONTEND_ORIGIN` | `https://skill-bay-ai.vercel.app` | Vercel production frontend URL |
+   | `PYTHON_VERSION` | `3.11.9` | Native Python runtime version |
 
 ### 3. Frontend Deployment on Vercel
 1. Sign in to [Vercel.com](https://vercel.com) and click **Add New** -> **Project**.

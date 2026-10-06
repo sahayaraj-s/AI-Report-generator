@@ -3,8 +3,8 @@ services:
     name: skillbay-placement-backend
     runtime: python
     rootDir: backend
-    plan: standard
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    plan: free
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
@@ -19,17 +19,16 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL_DEFAULT
-        value: gemini-3.6-flash
+        value: gemini-2.5-flash
       - key: GEMINI_MODEL_FAST
-        value: gemini-3.5-flash-lite
+        value: gemini-2.5-flash-lite
       - key: GEMINI_MODEL_DEEP
         value: gemini-2.5-pro
       - key: GEMINI_FALLBACKS
-        value: "gemini-3.5-flash,gemini-3.1-flash-lite"
+        value: "gemini-2.5-flash,gemini-2.0-flash"
       - key: GEMINI_TIMEOUT_SECONDS
-        value: "8.0"
-
+        value: "20.0"
       - key: CORS_ORIGINS
-        sync: false
+        value: "https://skill-bay-ai.vercel.app,http://localhost:5173"
       - key: FRONTEND_ORIGIN
-        sync: false
+        value: "https://skill-bay-ai.vercel.app"

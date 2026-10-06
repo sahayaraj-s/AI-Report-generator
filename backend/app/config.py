@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     enable_image_gen: bool = False
     rate_limit_per_minute: int = 60
 
-    cors_origins: str = "http://localhost:5173"
-    frontend_origin: str = "http://localhost:5173"
+    cors_origins: str = "https://skill-bay-ai.vercel.app,http://localhost:5173"
+    frontend_origin: str = "https://skill-bay-ai.vercel.app"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
