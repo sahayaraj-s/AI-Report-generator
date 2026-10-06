@@ -193,8 +193,9 @@ export function useAiChat({ defaultSessionId = null, initialContext = {} } = {})
       const authHeader = token ? `Bearer ${token}` : "";
 
       try {
-        const baseURL = api.defaults.baseURL || "http://localhost:8000";
-        const response = await fetch(`${baseURL}/api/ai/chat/stream`, {
+        const baseURL = api.defaults.baseURL ?? "";
+        const streamUrl = baseURL ? `${baseURL}/api/ai/chat/stream` : "/api/ai/chat/stream";
+        const response = await fetch(streamUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

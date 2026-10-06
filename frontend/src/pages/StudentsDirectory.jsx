@@ -77,19 +77,19 @@ function ReportModal({ onClose, selectedBatch, batches, selectedIds }) {
         ? `Export ${selectedIds.length} selected students to CSV`
         : "Export all students with scores and roles to CSV",
       icon: FileSpreadsheet,
-      href: `${api.defaults.baseURL}/api/reports/batch/csv${batchParam}`,
+      href: `${api.defaults.baseURL || ""}/api/reports/batch/csv${batchParam}`,
     },
     {
       label: "Batch Summary PDF",
       desc: "Full batch report with student table and statistics",
       icon: FileText,
-      href: `${api.defaults.baseURL}/api/reports/batch/pdf${batchParam}`,
+      href: `${api.defaults.baseURL || ""}/api/reports/batch/pdf${batchParam}`,
     },
     {
       label: "Role Match Report PDF",
       desc: "Role-matching matrix — who fits what and at what %",
       icon: FileText,
-      href: `${api.defaults.baseURL}/api/reports/match/pdf${batchParam}`,
+      href: `${api.defaults.baseURL || ""}/api/reports/match/pdf${batchParam}`,
     },
   ];
 
@@ -505,7 +505,7 @@ export default function StudentsDirectory() {
                           <Eye size={15} />
                         </Link>
                         <a
-                          href={`${api.defaults.baseURL}/api/reports/student/${s.id}/pdf`}
+                          href={`${api.defaults.baseURL || ""}/api/reports/student/${s.id}/pdf`}
                           target="_blank"
                           rel="noreferrer"
                           className="h-8 w-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-ink hover:bg-surface-high"

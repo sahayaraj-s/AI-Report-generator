@@ -128,7 +128,7 @@ export default function StudentProfile() {
             </dl>
 
             <a
-              href={`${api.defaults.baseURL}/api/reports/student/${data.student.id}/pdf`}
+              href={`${api.defaults.baseURL || ""}/api/reports/student/${data.student.id}/pdf`}
               target="_blank"
               rel="noreferrer"
               className="mt-6 block"
