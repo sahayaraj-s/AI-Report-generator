@@ -11,8 +11,12 @@ api.interceptors.request.use(async (config) => {
       config.headers.Authorization = "Bearer dev-mock-token";
     }
   } else if (auth?.currentUser) {
-    const token = await auth.currentUser.getIdToken();
-    config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      config.headers.Authorization = `Bearer ${token}`;
+    } catch (err) {
+      console.warn("[API] Failed to get Firebase ID token:", err);
+    }
   }
   return config;
 });

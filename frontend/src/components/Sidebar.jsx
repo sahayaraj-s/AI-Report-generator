@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   UploadCloud,
@@ -22,8 +22,14 @@ const NAV = [
 ];
 
 export function Sidebar() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
 
   return (
     <aside className="w-60 shrink-0 border-r border-surface-border bg-surface-dim flex flex-col h-screen sticky top-0">
@@ -88,7 +94,7 @@ export function Sidebar() {
           Settings
         </NavLink>
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink-muted hover:text-danger hover:bg-danger/10 transition-colors"
         >
           <LogOut size={18} />

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: skillbay-placement-backend
+    name: skill-bay-ai
     runtime: python
     rootDir: backend
     plan: free
