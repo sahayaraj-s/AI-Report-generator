@@ -12,3 +12,5 @@ dist/
 # Logs & temp
 *.log
 .DS_Store
+
+.vercel
