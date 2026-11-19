@@ -116,17 +116,34 @@ export function MessageRenderer({ content }) {
             }
             return <CodeBlock className={className}>{children}</CodeBlock>;
           },
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-0.5 text-brand-maroon font-semibold hover:text-brand-pink underline underline-offset-2"
-            >
-              <span>{children}</span>
-              <ExternalLink size={11} className="inline opacity-70" />
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const isReport = href && (href.includes("/api/reports") || href.includes(".pdf") || href.includes("/pdf"));
+            if (isReport) {
+              return (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 my-1 rounded-xl bg-brand-maroon text-white text-xs font-semibold hover:bg-brand-dark shadow-xs hover:scale-105 transition-all no-underline"
+                >
+                  <span>{children}</span>
+                  <ExternalLink size={12} className="opacity-90" />
+                </a>
+              );
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 text-brand-maroon font-semibold hover:text-brand-pink underline underline-offset-2"
+              >
+                <span>{children}</span>
+                <ExternalLink size={11} className="inline opacity-70" />
+              </a>
+            );
+          },
           strong: ({ children }) => <strong className="font-bold text-ink">{children}</strong>,
           em: ({ children }) => <em className="italic text-ink-muted">{children}</em>,
         }}

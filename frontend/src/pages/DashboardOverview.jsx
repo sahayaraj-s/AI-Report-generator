@@ -127,6 +127,64 @@ export default function DashboardOverview() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
+  // Live Streaming & Filter enhancements
+  const [isLiveStreaming, setIsLiveStreaming] = useState(false);
+  const [refreshInterval, setRefreshInterval] = useState(15); // seconds
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(new Date());
+  const [selectedHospitalUnit, setSelectedHospitalUnit] = useState("All");
+  const [selectedStudentPreview, setSelectedStudentPreview] = useState(null);
+  const [downloadingStudentId, setDownloadingStudentId] = useState(null);
+
+  // Auto-refresh interval when Live Streaming is active
+  useEffect(() => {
+    if (!isLiveStreaming) return;
+    const timer = setInterval(() => {
+      refetch();
+      setLastRefreshedAt(new Date());
+    }, refreshInterval * 1000);
+    return () => clearInterval(timer);
+  }, [isLiveStreaming, refreshInterval]);
+
+  const handleDownloadStudentPdf = async (student) => {
+    if (!student) return;
+    const sId = student.id;
+    setDownloadingStudentId(sId || student.name);
+    try {
+      let res;
+      if (sId) {
+        res = await api.get(`/api/reports/student/${sId}/pdf`, {
+          responseType: "blob",
+          timeout: 60000,
+        });
+      } else {
+        res = await api.post(
+          "/api/reports/live/student-pdf",
+          {
+            student,
+            batch_name: selectedBatch || "CCDP 2",
+            course_name: selectedCourse || "CCDP",
+          },
+          { responseType: "blob", timeout: 60000 }
+        );
+      }
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const cleanName = (student.name || "Student").replace(/\s+/g, "_");
+      const filename = `${cleanName}_Dashboard_Report.pdf`;
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error("PDF download failed:", err);
+      alert(err.response?.data?.detail || "Failed to download student placement report.");
+    } finally {
+      setDownloadingStudentId(null);
+    }
+  };
+
   const updateFilters = (newParams) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -194,6 +252,14 @@ export default function DashboardOverview() {
   const gridStudents = useMemo(() => {
     const rawStudents = data?.students || data?.leaderboard || [];
     let list = [...rawStudents];
+    if (selectedHospitalUnit && selectedHospitalUnit !== "All") {
+      const u = selectedHospitalUnit.toLowerCase();
+      list = list.filter(
+        (s) =>
+          (s.placement_company && s.placement_company.toLowerCase().includes(u)) ||
+          (s.best_role && s.best_role.toLowerCase().includes(u))
+      );
+    }
     if (gridSearch.trim()) {
       const q = gridSearch.toLowerCase();
       list = list.filter(
@@ -217,6 +283,14 @@ export default function DashboardOverview() {
     });
     return list;
   }, [data?.students, data?.leaderboard, gridSearch, gridSortBy, gridSortDir]);
+
+  const filteredKauveryMatrix = useMemo(() => {
+    if (!data?.kauvery_unit_matrix) return [];
+    if (selectedHospitalUnit === "All") return data.kauvery_unit_matrix;
+    return data.kauvery_unit_matrix.filter((r) =>
+      r.kauvery_unit?.toLowerCase().includes(selectedHospitalUnit.toLowerCase())
+    );
+  }, [data?.kauvery_unit_matrix, selectedHospitalUnit]);
 
   const pagedStudents = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -304,9 +378,19 @@ export default function DashboardOverview() {
                 <h2 className="font-display font-bold text-base text-ink">
                   Kauvery Hospital CCDP Placement Suite
                 </h2>
-                <Badge tone="success" className="text-[10px] px-2 py-0.5">
-                  Live Stream
-                </Badge>
+                <button
+                  type="button"
+                  onClick={() => setIsLiveStreaming((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all ${
+                    isLiveStreaming
+                      ? "bg-success/15 text-success border-success/30 shadow-xs ring-2 ring-success/20 animate-pulse"
+                      : "bg-surface-high text-ink-muted border-surface-border hover:bg-surface-dim"
+                  }`}
+                  title={isLiveStreaming ? "Live sync active (click to pause)" : "Click to enable live auto-sync"}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isLiveStreaming ? "bg-success" : "bg-ink-faint"}`} />
+                  <span>{isLiveStreaming ? `● LIVE (${refreshInterval}s)` : "Stream Paused"}</span>
+                </button>
               </div>
               <p className="text-xs text-ink-muted mt-0.5">
                 Batch: <strong className="text-ink">{selectedBatch || data?.batch_list?.[0] || "All Batches"}</strong> · Single Source of Truth Analytics
@@ -315,9 +399,26 @@ export default function DashboardOverview() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
+            {isLiveStreaming && (
+              <select
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                className="text-[11px] font-semibold bg-surface border border-surface-border rounded-xl px-2.5 py-1.5 text-ink focus:outline-none"
+                title="Select refresh rate"
+              >
+                <option value={10}>10s Interval</option>
+                <option value={15}>15s Interval</option>
+                <option value={30}>30s Interval</option>
+                <option value={60}>60s Interval</option>
+              </select>
+            )}
+
             <Button
               variant="secondary"
-              onClick={() => refetch()}
+              onClick={() => {
+                refetch();
+                setLastRefreshedAt(new Date());
+              }}
               disabled={isRefetching}
               className="text-xs flex items-center gap-1.5 py-1.5 px-3"
             >
@@ -341,6 +442,96 @@ export default function DashboardOverview() {
               </Button>
             </Link>
           </div>
+        </div>
+
+        {/* ── Executive KPI Quick-Insights Strip ─────────────────────────────── */}
+        {data && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface-container border border-surface-border shadow-xs">
+              <div className="p-2.5 rounded-xl bg-brand-yellow/15 text-brand-yellow shrink-0">
+                <Award size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                  Cohort Top Performer
+                </div>
+                <div className="text-xs font-bold text-ink truncate">
+                  {data.top_performer || "Abinaya M"}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface-container border border-surface-border shadow-xs">
+              <div className="p-2.5 rounded-xl bg-success/15 text-success shrink-0">
+                <CheckCircle2 size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                  Hospital Offer Rate
+                </div>
+                <div className="text-xs font-bold text-ink">
+                  {data.placed_pct ?? 0}% ({data.placed_count ?? 0} Offers)
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface-container border border-surface-border shadow-xs">
+              <div className="p-2.5 rounded-xl bg-brand-maroon/15 text-brand-maroon shrink-0">
+                <Hospital size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                  Kauvery Unit Roles
+                </div>
+                <div className="text-xs font-bold text-ink truncate">
+                  {data.kauvery_unit_matrix?.length ?? 4} Active Openings
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-surface-container border border-surface-border shadow-xs">
+              <div className="p-2.5 rounded-xl bg-brand-purple/15 text-brand-purple shrink-0">
+                <Keyboard size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                  Rapid Typists (≥30 WPM)
+                </div>
+                <div className="text-xs font-bold text-ink">
+                  {data.typing_stats?.above_target_count ?? 0} of {data.typing_stats?.total_tested ?? data.total_students} Candidates
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Kauvery Hospital Facility Filter Chips ─────────────────────────── */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span className="text-[11px] font-bold text-ink-faint shrink-0 flex items-center gap-1.5 pl-1">
+            <Hospital size={14} className="text-brand-maroon" />
+            <span>Kauvery Unit:</span>
+          </span>
+          {["All", "Alwarpet", "Vadapalani", "Trichy", "Salem", "Hosur"].map((unit) => (
+            <button
+              key={unit}
+              onClick={() => setSelectedHospitalUnit(unit)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all shrink-0 ${
+                selectedHospitalUnit === unit
+                  ? "bg-brand-maroon text-white shadow-xs"
+                  : "bg-surface-container border border-surface-border text-ink-muted hover:text-ink hover:bg-surface-high"
+              }`}
+            >
+              {unit === "All" ? "All Facilities" : `Kauvery ${unit}`}
+            </button>
+          ))}
+          {selectedHospitalUnit !== "All" && (
+            <button
+              onClick={() => setSelectedHospitalUnit("All")}
+              className="text-[10px] text-brand-maroon font-bold hover:underline ml-1"
+            >
+              Clear Unit
+            </button>
+          )}
         </div>
 
         {/* ── Cross-Filtering Slicers Card ────────────────────────────────────── */}
@@ -1030,8 +1221,8 @@ export default function DashboardOverview() {
                 </Link>
               </div>
 
-              {data.kauvery_unit_matrix?.length === 0 ? (
-                <EmptyState text="No active placement roles found." />
+              {filteredKauveryMatrix.length === 0 ? (
+                <EmptyState text="No active placement roles found for the selected Kauvery unit." />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -1047,7 +1238,7 @@ export default function DashboardOverview() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-border">
-                      {data.kauvery_unit_matrix.map((r) => (
+                      {filteredKauveryMatrix.map((r) => (
                         <tr key={r.id || r.role_name} className="hover:bg-surface-high/50 transition-colors">
                           <td className="py-3 font-semibold text-ink">
                             <div className="text-sm font-semibold text-ink">{r.role_name}</div>
@@ -1250,17 +1441,38 @@ export default function DashboardOverview() {
                             </Badge>
                           </td>
                           <td className="py-3 text-right">
-                            {s.id ? (
-                              <Link
-                                to={`/students/${s.id}`}
-                                className="p-1.5 inline-flex rounded-lg bg-surface-high hover:bg-surface-container text-ink-muted hover:text-ink transition-colors"
-                                title="View Profile"
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedStudentPreview(s)}
+                                className="p-1.5 rounded-lg bg-brand-maroon/10 hover:bg-brand-maroon text-brand-maroon hover:text-white transition-colors"
+                                title="Quick AI Preview"
                               >
-                                <Eye size={14} />
-                              </Link>
-                            ) : (
-                              <span className="text-ink-faint">—</span>
-                            )}
+                                <Sparkles size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadStudentPdf(s)}
+                                disabled={downloadingStudentId === (s.id || s.name)}
+                                className="p-1.5 rounded-lg bg-surface-high hover:bg-surface-container text-ink-muted hover:text-ink transition-colors disabled:opacity-50"
+                                title="Download 3-Page AI Placement Report (PDF)"
+                              >
+                                {downloadingStudentId === (s.id || s.name) ? (
+                                  <div className="w-3.5 h-3.5 border-2 border-brand-maroon border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Download size={13} />
+                                )}
+                              </button>
+                              {s.id && (
+                                <Link
+                                  to={`/students/${s.id}`}
+                                  className="p-1.5 rounded-lg bg-surface-high hover:bg-surface-container text-ink-muted hover:text-ink transition-colors"
+                                  title="View Full Profile"
+                                >
+                                  <Eye size={13} />
+                                </Link>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -1295,6 +1507,169 @@ export default function DashboardOverview() {
               )}
             </Card>
           )}
+        </div>
+      )}
+
+      {/* ── Quick Student AI Preview Drawer / Modal ──────────────────────── */}
+      {selectedStudentPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-surface border border-surface-border rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-surface-border pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-maroon to-brand-purple flex items-center justify-center text-white font-bold text-lg shadow-sm">
+                  {selectedStudentPreview.name?.slice(0, 2).toUpperCase() || "ST"}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display font-bold text-base text-ink">
+                      {selectedStudentPreview.name}
+                    </h3>
+                    {selectedStudentPreview.rank && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-yellow/15 text-brand-yellow border border-brand-yellow/30">
+                        Rank #{selectedStudentPreview.rank}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-ink-faint mt-0.5">
+                    {selectedStudentPreview.roll_number || "Roll N/A"} · {selectedStudentPreview.course || "CCDP"} ({selectedStudentPreview.batch || "CCDP 2"})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStudentPreview(null)}
+                className="p-1.5 rounded-lg hover:bg-surface-high text-ink-muted hover:text-ink transition-colors"
+                title="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Score & Metrics Grid */}
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="p-3 rounded-xl bg-surface-container border border-surface-border text-center">
+                <div className="text-[10px] uppercase font-bold text-ink-faint">Overall Score</div>
+                <div className="text-xl font-extrabold tabular-nums text-brand-maroon mt-0.5">
+                  {selectedStudentPreview.overall_score}%
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface-container border border-surface-border text-center">
+                <div className="text-[10px] uppercase font-bold text-ink-faint">Readiness</div>
+                <div className="mt-1">
+                  <Badge tone={selectedStudentPreview.placement_ready ? "success" : "warning"} className="text-[10px]">
+                    {selectedStudentPreview.placement_ready ? "Ready" : "Needs Prep"}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface-container border border-surface-border text-center">
+                <div className="text-[10px] uppercase font-bold text-ink-faint">Attendance</div>
+                <div className="text-sm font-bold text-ink mt-1">
+                  {selectedStudentPreview.attendance_pct !== null && selectedStudentPreview.attendance_pct !== undefined
+                    ? `${selectedStudentPreview.attendance_pct}%`
+                    : "N/A"}
+                </div>
+              </div>
+            </div>
+
+            {/* Kauvery Hospital Matched Role */}
+            <div className="p-3.5 rounded-xl bg-brand-maroon/5 border border-brand-maroon/20 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-brand-maroon flex items-center gap-1.5">
+                  <Hospital size={14} />
+                  <span>Kauvery Hospital Match</span>
+                </span>
+                <Badge tone={FIT_TONE[selectedStudentPreview.fit_tier] || "brand"} className="text-[9px]">
+                  {selectedStudentPreview.fit_tier || "Fit"}
+                </Badge>
+              </div>
+              <div className="text-xs font-bold text-ink">
+                {selectedStudentPreview.best_role || "Healthcare Operations Executive"}
+              </div>
+              {selectedStudentPreview.is_placed && (
+                <div className="text-[11px] text-success font-medium flex items-center gap-1 pt-1">
+                  <CheckCircle2 size={12} />
+                  <span>Offer Confirmed: {selectedStudentPreview.placement_company || "Kauvery Hospital"} ({selectedStudentPreview.placement_designation || "Staff"})</span>
+                </div>
+              )}
+            </div>
+
+            {/* Strengths & Gaps Highlights */}
+            <div className="space-y-2 text-xs">
+              {selectedStudentPreview.strengths && (
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-success tracking-wider block mb-1">
+                    Key Strengths:
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {(Array.isArray(selectedStudentPreview.strengths)
+                      ? selectedStudentPreview.strengths
+                      : typeof selectedStudentPreview.strengths === "string"
+                      ? selectedStudentPreview.strengths.split(",")
+                      : ["Clinical Operations", "Communication", "Patient Care"]
+                    ).map((st, i) => (
+                      <span key={i} className="px-2 py-0.5 rounded-md text-[10px] bg-success/10 text-success font-medium">
+                        {typeof st === "string" ? st.trim() : st}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedStudentPreview.weaknesses && (
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-brand-yellow tracking-wider block mb-1">
+                    Target Development Areas:
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {(Array.isArray(selectedStudentPreview.weaknesses)
+                      ? selectedStudentPreview.weaknesses
+                      : typeof selectedStudentPreview.weaknesses === "string"
+                      ? selectedStudentPreview.weaknesses.split(",")
+                      : ["Advanced Hospital Systems", "Typing Speed"]
+                    ).map((wk, i) => (
+                      <span key={i} className="px-2 py-0.5 rounded-md text-[10px] bg-brand-yellow/10 text-ink font-medium">
+                        {typeof wk === "string" ? wk.trim() : wk}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2.5 pt-2 border-t border-surface-border">
+              <Button
+                onClick={() => handleDownloadStudentPdf(selectedStudentPreview)}
+                disabled={downloadingStudentId === (selectedStudentPreview.id || selectedStudentPreview.name)}
+                className="flex-1 flex items-center justify-center gap-2 text-xs py-2"
+              >
+                {downloadingStudentId === (selectedStudentPreview.id || selectedStudentPreview.name) ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <span>Generating 3-Page PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    <span>Download 3-Page AI Report (PDF)</span>
+                  </>
+                )}
+              </Button>
+
+              {selectedStudentPreview.id && (
+                <Link to={`/students/${selectedStudentPreview.id}`} className="shrink-0">
+                  <Button variant="secondary" className="text-xs py-2 flex items-center gap-1.5">
+                    <span>Full Profile</span>
+                    <ArrowUpRight size={13} />
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </Layout>

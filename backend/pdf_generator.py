@@ -71,6 +71,42 @@ C_BORDER_DARK = colors.HexColor("#CBD5E1")
 
 
 # ---------------------------------------------------------------------------
+# Role Name Formatter & Helper
+# ---------------------------------------------------------------------------
+
+def format_professional_role(role_raw: str | None, qualification: str = "") -> str:
+    """Expands shorthand designations (e.g. 'OPD', 'FO') into executive hospital titles."""
+    if not role_raw or str(role_raw).strip() in ("—", "None", "", "nan"):
+        if "admin" in qualification.lower() or "hospital" in qualification.lower():
+            return "Hospital Front Office / Patient Care Executive"
+        return "Healthcare Front Office & Patient Relations Executive"
+
+    r = str(role_raw).strip()
+    r_lower = r.lower()
+
+    if r_lower in ("opd", "opd executive", "opd trainee"):
+        return "Hospital Outpatient Department (OPD) & Patient Relations Executive"
+    if r_lower in ("fo", "front office", "front office executive", "junior executive — front office (fo)", "junior executive - front office (fo)"):
+        return "Hospital Front Office / Guest Relations Executive"
+    if "billing" in r_lower or "insurance" in r_lower:
+        return "Medical Billing, Cashless & Health Insurance Executive"
+    if "patient care" in r_lower or "coordinator" in r_lower:
+        return "Patient Care Coordinator & Clinical Liaison"
+    if "operations" in r_lower or "admin" in r_lower:
+        return "Hospital Operations & Administrative Executive"
+    if "pharmacy" in r_lower or "supply" in r_lower:
+        return "Pharmacy Supply Chain & Inventory Executive"
+    if "records" in r_lower or "mrd" in r_lower:
+        return "Medical Records Technology (MRD) & Quality Assistant"
+    if "it" in r_lower or "systems" in r_lower:
+        return "Healthcare Information Systems & IT Executive"
+    if "sales" in r_lower:
+        return "Corporate Customer Experience & Sales Executive"
+
+    return r
+
+
+# ---------------------------------------------------------------------------
 # Numbered Canvas for Footer
 # ---------------------------------------------------------------------------
 class NumberedCanvas(canvas.Canvas):
@@ -363,6 +399,33 @@ def get_report_styles():
         leading=9.5,
         textColor=colors.white,
     )
+    tbl_hdr_left = ParagraphStyle(
+        "TblHdrLeft",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.white,
+        alignment=0,
+    )
+    tbl_hdr_right = ParagraphStyle(
+        "TblHdrRight",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.white,
+        alignment=2,
+    )
+    tbl_hdr_center = ParagraphStyle(
+        "TblHdrCenter",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.white,
+        alignment=1,
+    )
     tbl_cell = ParagraphStyle(
         "TblCell",
         parent=styles["Normal"],
@@ -377,6 +440,24 @@ def get_report_styles():
         fontName="Helvetica-Bold",
         fontSize=7.5,
         leading=9.5,
+        textColor=C_GRAY_DARK,
+    )
+    tbl_cell_center = ParagraphStyle(
+        "TblCellCenter",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=7.5,
+        leading=9.5,
+        alignment=1,
+        textColor=C_GRAY_DARK,
+    )
+    tbl_cell_center_bold = ParagraphStyle(
+        "TblCellCenterBold",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=7.5,
+        leading=9.5,
+        alignment=1,
         textColor=C_GRAY_DARK,
     )
     tbl_cell_right = ParagraphStyle(
@@ -413,6 +494,7 @@ def get_report_styles():
         leading=10.5,
         textColor=C_GRAY_DARK,
         leftIndent=12,
+        spaceAfter=3,
     )
     bullet_amber = ParagraphStyle(
         "BulletAmber",
@@ -422,6 +504,7 @@ def get_report_styles():
         leading=10.5,
         textColor=C_GRAY_DARK,
         leftIndent=12,
+        spaceAfter=3,
     )
 
     return {
@@ -434,8 +517,13 @@ def get_report_styles():
         "card_value": card_value,
         "card_sub": card_sub,
         "tbl_hdr": tbl_hdr,
+        "tbl_hdr_left": tbl_hdr_left,
+        "tbl_hdr_right": tbl_hdr_right,
+        "tbl_hdr_center": tbl_hdr_center,
         "tbl_cell": tbl_cell,
         "tbl_cell_bold": tbl_cell_bold,
+        "tbl_cell_center": tbl_cell_center,
+        "tbl_cell_center_bold": tbl_cell_center_bold,
         "tbl_cell_right": tbl_cell_right,
         "tbl_cell_right_bold": tbl_cell_right_bold,
         "body_p": body_p,
@@ -459,8 +547,8 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         pagesize=A4,
         leftMargin=36 * pt,
         rightMargin=36 * pt,
-        topMargin=28 * pt,
-        bottomMargin=36 * pt,
+        topMargin=26 * pt,
+        bottomMargin=34 * pt,
     )
 
     styles = get_report_styles()
@@ -479,28 +567,37 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     # PAGE 1: Identity, Profile, Performance at a glance, Scores table, Attendance
     # =========================================================================
 
-    # 1. Header with Rank Badge
+    # 1. Header with Rank Badge Pill
     badge_text = f"RANK #{rank} OF {class_size} · TOP PERFORMER" if rank == 1 else f"RANK #{rank} OF {class_size}"
     badge_bg = C_GOLD_BG if rank == 1 else colors.HexColor("#F1F5F9")
     badge_fg = C_GOLD if rank == 1 else C_PLUM_DARK
+    badge_border = C_GOLD if rank == 1 else colors.HexColor("#CBD5E1")
 
-    badge_p = Paragraph(
-        f"<font color='{badge_fg.hexval()}'><b>{badge_text}</b></font>",
-        ParagraphStyle("Badge", parent=styles["body_p"], alignment=2, fontSize=8, leading=10)
+    badge_table = Table(
+        [[Paragraph(f"<font color='{badge_fg.hexval()}'><b>{badge_text}</b></font>", ParagraphStyle("BadgeInner", parent=styles["body_p"], alignment=1, fontSize=7.5, leading=9.5))]],
+        colWidths=[146 * pt],
     )
+    badge_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), badge_bg),
+        ("BOX", (0, 0), (-1, -1), 0.75, badge_border),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
 
     header_table = Table(
         [
             [
                 Paragraph("Student Performance Dashboard & AI Career Report", styles["title"]),
-                badge_p,
+                badge_table,
             ],
             [
                 Paragraph(f"Comprehensive Career Development Programme (CCDP) · Batch {batch_name}", styles["subtitle"]),
                 Paragraph("", styles["body_p"]),
             ],
         ],
-        colWidths=[380 * pt, 143 * pt],
+        colWidths=[373 * pt, 150 * pt],
     )
     header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -509,7 +606,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         ("TOPPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(header_table)
-    story.append(Spacer(1, 6 * pt))
+    story.append(Spacer(1, 5 * pt))
 
     # 2. Student Identity Line
     id_table = Table(
@@ -525,14 +622,14 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     )
     id_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), C_PLUM_LIGHT),
-        ("PADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 1), (-1, 1), 6),
+        ("PADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 5),
         ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
     ]))
     story.append(id_table)
-    story.append(Spacer(1, 8 * pt))
+    story.append(Spacer(1, 7 * pt))
 
-    # 3. Student Profile Grid (2 rows x 4 columns)
+    # 3. Student Profile Grid (2 rows x 4 columns) - Exact 523 pt total width
     gender = prof.get("Gender") or prof.get("gender") or "—"
     age = str(prof.get("Age") or prof.get("age") or "—")
     if age != "—" and not "year" in age.lower():
@@ -576,9 +673,9 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     ]))
     story.append(Paragraph("STUDENT PROFILE", styles["section_h1"]))
     story.append(profile_table)
-    story.append(Spacer(1, 8 * pt))
+    story.append(Spacer(1, 7 * pt))
 
-    # 4. Performance at a Glance (4 Stat Cards)
+    # 4. Performance at a Glance (4 Stat Cards) - Exact 523 pt total width
     total_score = rec.get("total_score", 0.0)
     total_max = rec.get("total_max", 265.0)
     overall_pct = rec.get("overall_pct", 0.0)
@@ -607,16 +704,16 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         ("BACKGROUND", (2, 0), (2, 0), C_GREEN_BG),
         ("BACKGROUND", (3, 0), (3, 0), C_GOLD_BG if rank == 1 else C_GRAY_LIGHT),
         ("GRID", (0, 0), (-1, -1), 0.5, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 5),
+        ("PADDING", (0, 0), (-1, -1), 4),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(Paragraph("PERFORMANCE AT A GLANCE", styles["section_h1"]))
     story.append(stat_table)
-    story.append(Spacer(1, 8 * pt))
+    story.append(Spacer(1, 7 * pt))
 
     # 5 & 6. Two-Column Block: Attendance Donut Chart + Subject Scores Table
-    # Left: Donut + Typing
+    # Left: 223 pt, Right: 300 pt (Sum = 523 pt)
     typing_stats = rec.get("typing_stats", {})
     chart_buf = generate_donut_and_typing_chart(
         present_days=rec.get("present_days", 49),
@@ -626,7 +723,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         typing_min=typing_stats.get("min", 15.0),
         typing_max=typing_stats.get("max", 36.0),
     )
-    attendance_img = Image(chart_buf, width=220 * pt, height=82 * pt)
+    attendance_img = Image(chart_buf, width=223 * pt, height=84 * pt)
 
     # Right: Subject-wise table
     subj_scores = rec.get("assessment_scores", {})
@@ -636,11 +733,11 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
 
     table_rows = [
         [
-            Paragraph("Assessment Component", styles["tbl_hdr"]),
-            Paragraph("Score", styles["tbl_hdr"]),
-            Paragraph("Max", styles["tbl_hdr"]),
-            Paragraph("%", styles["tbl_hdr"]),
-            Paragraph("Class Avg %", styles["tbl_hdr"]),
+            Paragraph("Assessment Component", styles["tbl_hdr_left"]),
+            Paragraph("Score", styles["tbl_hdr_right"]),
+            Paragraph("Max", styles["tbl_hdr_right"]),
+            Paragraph("%", styles["tbl_hdr_right"]),
+            Paragraph("Class Avg %", styles["tbl_hdr_right"]),
         ]
     ]
 
@@ -675,24 +772,24 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         Paragraph(f"<b>{rec.get('class_avg_overall_pct', 71.1):.1f}%</b>", styles["tbl_cell_right_bold"]),
     ])
 
-    scores_table = Table(table_rows, colWidths=[140 * pt, 36 * pt, 32 * pt, 42 * pt, 48 * pt])
+    scores_table = Table(table_rows, colWidths=[136 * pt, 38 * pt, 36 * pt, 42 * pt, 48 * pt])
     t_style = [
         ("BACKGROUND", (0, 0), (-1, 0), C_PLUM_DARK),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 3),
+        ("PADDING", (0, 0), (-1, -1), 2.8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, C_GRAY_LIGHT]),
         ("BACKGROUND", (0, -1), (-1, -1), C_PLUM_LIGHT),
     ]
     scores_table.setStyle(TableStyle(t_style))
 
-    # Combine chart + table in one horizontal row
+    # Combine chart + table in one horizontal row matching 523 pt
     split_block = Table(
         [
             [
-                Table([[Paragraph("ATTENDANCE & SPEED", styles["section_h1"])], [attendance_img]], colWidths=[220 * pt]),
-                Table([[Paragraph("SUBJECT-WISE ASSESSMENT SCORES", styles["section_h1"])], [scores_table]], colWidths=[298 * pt]),
+                Table([[Paragraph("TRAINING ATTENDANCE & SPEED", styles["section_h1"])], [attendance_img]], colWidths=[223 * pt]),
+                Table([[Paragraph("SUBJECT-WISE ASSESSMENT SCORES", styles["section_h1"])], [scores_table]], colWidths=[300 * pt]),
             ]
         ],
         colWidths=[223 * pt, 300 * pt],
@@ -712,22 +809,22 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
 
     story.append(Paragraph("ASSESSMENT PERFORMANCE — SUBJECT BREAKDOWN", styles["section_h1"]))
     bar_chart_buf = generate_subject_bar_chart(subj_pcts, class_subj_avgs)
-    bar_img = Image(bar_chart_buf, width=523 * pt, height=188 * pt)
+    bar_img = Image(bar_chart_buf, width=523 * pt, height=180 * pt)
     story.append(bar_img)
-    story.append(Spacer(1, 6 * pt))
+    story.append(Spacer(1, 5 * pt))
 
-    # Core Skill Matrix (Radar on Left + Table on Right)
+    # Core Skill Matrix (Radar on Left 215 pt + Table on Right 308 pt = 523 pt)
     skill_scores = rec.get("skill_scores", {})
     class_skill_avgs = rec.get("class_skill_averages", {})
     radar_buf = generate_skill_radar_chart(skill_scores, class_skill_avgs)
-    radar_img = Image(radar_buf, width=210 * pt, height=182 * pt)
+    radar_img = Image(radar_buf, width=215 * pt, height=178 * pt)
 
-    # Skill table rows
+    # Skill table rows with centered and aligned columns
     skill_rows = [
         [
-            Paragraph("Skill", styles["tbl_hdr"]),
-            Paragraph(name, styles["tbl_hdr"]),
-            Paragraph("Class Avg", styles["tbl_hdr"]),
+            Paragraph("Skill", styles["tbl_hdr_left"]),
+            Paragraph(name, styles["tbl_hdr_center"]),
+            Paragraph("Class Avg", styles["tbl_hdr_center"]),
         ]
     ]
 
@@ -755,8 +852,8 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         avg_str = f"{avg_v:.1f}" if avg_v is not None else "—"
         skill_rows.append([
             Paragraph(display_s, styles["tbl_cell"]),
-            Paragraph(f"<b>{val_str}</b>", styles["tbl_cell_bold"]),
-            Paragraph(avg_str, styles["tbl_cell_right"]),
+            Paragraph(f"<b>{val_str}</b>", styles["tbl_cell_center_bold"]),
+            Paragraph(avg_str, styles["tbl_cell_center"]),
         ])
 
     # Typing speed row
@@ -764,15 +861,15 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     tavg = typing_stats.get("avg", 21.4)
     skill_rows.append([
         Paragraph("Typing Speed", styles["tbl_cell_bold"]),
-        Paragraph(f"<b>{twpm:.0f} WPM</b>", styles["tbl_cell_bold"]),
-        Paragraph(f"{tavg:.1f} WPM", styles["tbl_cell_right"]),
+        Paragraph(f"<b>{twpm:.0f} WPM</b>", styles["tbl_cell_center_bold"]),
+        Paragraph(f"{tavg:.1f} WPM", styles["tbl_cell_center"]),
     ])
 
-    skill_table = Table(skill_rows, colWidths=[150 * pt, 80 * pt, 65 * pt])
+    skill_table = Table(skill_rows, colWidths=[150 * pt, 80 * pt, 78 * pt])
     skill_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), C_PLUM_DARK),
         ("GRID", (0, 0), (-1, -1), 0.4, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 3),
+        ("PADDING", (0, 0), (-1, -1), 2.8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_GRAY_LIGHT]),
     ]))
@@ -785,7 +882,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
             [Paragraph("<font color='#64748B' size='6.5'><b>OTHER SKILLS (AS RECORDED)</b></font>", styles["body_p"])],
             [Paragraph(f"<i>{other_skills_formatted}</i>", styles["body_p"])],
         ],
-        colWidths=[295 * pt],
+        colWidths=[308 * pt],
     )
     other_skills_box.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
@@ -799,7 +896,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
             [Spacer(1, 4 * pt)],
             [other_skills_box],
         ],
-        colWidths=[295 * pt],
+        colWidths=[308 * pt],
     )
     right_col_table.setStyle(TableStyle([("PADDING", (0, 0), (-1, -1), 0)]))
 
@@ -807,7 +904,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         [
             [radar_img, right_col_table]
         ],
-        colWidths=[223 * pt, 300 * pt],
+        colWidths=[215 * pt, 308 * pt],
     )
     skill_block.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -816,31 +913,31 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
 
     story.append(Paragraph("CORE SKILL MATRIX & OTHER SKILLS", styles["section_h1"]))
     story.append(skill_block)
-    story.append(Spacer(1, 6 * pt))
+    story.append(Spacer(1, 5 * pt))
 
     # 9. Placement Outcome Table (ONLY if student is placed!)
     placement = rec.get("placement")
     if placement:
-        p_desig = placement.get("Designation") or "—"
+        p_desig = format_professional_role(placement.get("Designation"), qual)
         p_org = placement.get("Organization") or "—"
         p_sal = placement.get("salary_display") or "—"
         p_rank = placement.get("cohort_rank") or "—"
 
         p_rows = [
             [
-                Paragraph("Designation", styles["tbl_hdr"]),
-                Paragraph("Organization", styles["tbl_hdr"]),
-                Paragraph("Starting Salary", styles["tbl_hdr"]),
-                Paragraph("Cohort Rank (by salary)", styles["tbl_hdr"]),
+                Paragraph("Designation", styles["tbl_hdr_left"]),
+                Paragraph("Organization", styles["tbl_hdr_left"]),
+                Paragraph("Starting Salary", styles["tbl_hdr_center"]),
+                Paragraph("Cohort Rank (by salary)", styles["tbl_hdr_center"]),
             ],
             [
                 Paragraph(f"<b>{p_desig}</b>", styles["tbl_cell_bold"]),
                 Paragraph(p_org, styles["tbl_cell"]),
-                Paragraph(f"<b>{p_sal}</b>", styles["tbl_cell_bold"]),
-                Paragraph(f"<b>{p_rank}</b>", styles["tbl_cell_bold"]),
+                Paragraph(f"<b>{p_sal}</b>", styles["tbl_cell_center_bold"]),
+                Paragraph(f"<b>{p_rank}</b>", styles["tbl_cell_center_bold"]),
             ]
         ]
-        p_table = Table(p_rows, colWidths=[150 * pt, 150 * pt, 110 * pt, 113 * pt])
+        p_table = Table(p_rows, colWidths=[145 * pt, 145 * pt, 115 * pt, 118 * pt])
         p_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), C_PLUM_DARK),
             ("GRID", (0, 0), (-1, -1), 0.4, C_BORDER),
@@ -864,17 +961,15 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         story.append(p_table)
         story.append(Spacer(1, 3 * pt))
         story.append(p_note)
-        story.append(Spacer(1, 6 * pt))
+        story.append(Spacer(1, 5 * pt))
 
     # 10. Strengths & Areas for Improvement (Grounded in Numbers)
     strengths_bullets = []
-    # Grounded rule-based strength derivation
     if rank == 1:
         strengths_bullets.append(f"Ranked <b>#1 of {class_size}</b> in overall assessment ({total_score:g}/{total_max:g}, {overall_pct:.1f}%) — well above class average of {rec.get('class_avg_overall_pct', 71.1):.1f}%.")
     elif overall_pct > rec.get('class_avg_overall_pct', 71.1):
         strengths_bullets.append(f"Overall assessment score of <b>{overall_pct:.1f}%</b> outperforms class average of {rec.get('class_avg_overall_pct', 71.1):.1f}%.")
 
-    # High skill matrix items
     tens = [k for k, v in skill_scores.items() if v >= 10.0]
     if tens:
         tens_clean = ", ".join(t.split('\n')[0] for t in tens)
@@ -884,7 +979,6 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         if top_skills:
             strengths_bullets.append(f"Top skill ratings: <b>{top_skills[0][0].split(chr(10))[0]} ({top_skills[0][1]:.0f}/10)</b>.")
 
-    # High subject scores
     full_marks = [s for s, mx in subj_maxes.items() if subj_scores.get(s) == mx]
     if full_marks:
         strengths_bullets.append(f"Full marks (100%) in <b>{', '.join(full_marks[:3])}</b>.")
@@ -895,24 +989,20 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     if placement and placement.get("salary_num", 0) >= 15000:
         strengths_bullets.append(f"Secured a top starting placement salary of <b>{placement['salary_display']}</b>.")
 
-    # Weaknesses / Improvement areas
+    # Areas for improvement
     gaps_bullets = []
-    # Lowest subject relative to others
     if subj_pcts:
         lowest_subj = min(subj_pcts.items(), key=lambda x: x[1])
         gaps_bullets.append(f"<b>{lowest_subj[0]} ({lowest_subj[1]:.0f}%)</b> is the lowest-scoring assessment component — scope to reinforce core concepts.")
 
-    # Theory vs Practical comparison
     word_t = subj_scores.get("Ms Word Theory")
     word_p = subj_scores.get("Ms Word Practical")
     if word_t is not None and word_p is not None and word_t < word_p:
         gaps_bullets.append(f"MS Word Theory ({subj_pcts.get('Ms Word Theory', 0):.0f}%) trails Practical ({subj_pcts.get('Ms Word Practical', 0):.0f}%) — conceptual grounding can be strengthened.")
 
-    # Typing speed comparison
     if twpm and tavg and twpm < 25:
         gaps_bullets.append(f"Typing speed (<b>{twpm:.0f} WPM</b>) is near cohort average ({tavg:.1f} WPM); practice recommended to achieve 30+ WPM.")
 
-    # Lowest skill on matrix
     if skill_scores:
         lowest_skill = min(skill_scores.items(), key=lambda x: x[1])
         if lowest_skill[1] < 8:
@@ -921,28 +1011,21 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     if not gaps_bullets:
         gaps_bullets.append("Continue advanced domain certifications to maintain competitive lead.")
 
-    str_cells = []
-    for s in strengths_bullets[:4]:
-        str_cells.append(Paragraph(f"✔  {s}", styles["bullet_green"]))
-        str_cells.append(Spacer(1, 2 * pt))
-
-    gap_cells = []
-    for g in gaps_bullets[:4]:
-        gap_cells.append(Paragraph(f"⚠  {g}", styles["bullet_amber"]))
-        gap_cells.append(Spacer(1, 2 * pt))
+    str_cells = [Paragraph(f"✔  {s}", styles["bullet_green"]) for s in strengths_bullets[:4]]
+    gap_cells = [Paragraph(f"⚠  {g}", styles["bullet_amber"]) for g in gaps_bullets[:4]]
 
     strengths_table = Table(
         [
             [
-                Paragraph("<font color='#16A34A'><b>KEY STRENGTHS</b></font>", styles["section_h1"]),
-                Paragraph("<font color='#D97706'><b>AREAS FOR IMPROVEMENT</b></font>", styles["section_h1"]),
+                Paragraph("<font color='#16A34A'><b>✔ &nbsp;KEY STRENGTHS</b></font>", styles["section_h1"]),
+                Paragraph("<font color='#D97706'><b>⚠ &nbsp;AREAS FOR IMPROVEMENT</b></font>", styles["section_h1"]),
             ],
             [
-                Table([[c] for c in str_cells], colWidths=[255 * pt]),
-                Table([[c] for c in gap_cells], colWidths=[255 * pt]),
+                Table([[c] for c in str_cells], colWidths=[253 * pt]),
+                Table([[c] for c in gap_cells], colWidths=[256 * pt]),
             ],
         ],
-        colWidths=[260 * pt, 263 * pt],
+        colWidths=[258 * pt, 265 * pt],
     )
     strengths_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -950,7 +1033,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         ("BACKGROUND", (1, 1), (1, 1), C_GOLD_BG),
         ("BOX", (0, 1), (0, 1), 0.5, colors.HexColor("#BBF7D0")),
         ("BOX", (1, 1), (1, 1), 0.5, colors.HexColor("#FDE68A")),
-        ("PADDING", (0, 1), (-1, -1), 5),
+        ("PADDING", (0, 1), (-1, -1), 4),
     ]))
     story.append(Paragraph("STRENGTHS & AREAS FOR IMPROVEMENT", styles["section_h1"]))
     story.append(strengths_table)
@@ -965,33 +1048,38 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     story.append(Paragraph("AI-GENERATED CAREER FIT REPORT", styles["title"]))
     story.append(Spacer(1, 3 * pt))
 
-    # Recommended Role Title
-    rec_role = "Hospital Front Office / Guest Relations Executive"
+    # Recommended Role Title with professional formatting
+    rec_role_raw = "Hospital Front Office / Guest Relations Executive"
     if placement and placement.get("Designation"):
-        rec_role = placement["Designation"]
-        if "FO" in rec_role:
-            rec_role = "Hospital Front Office / Guest Relations Executive"
+        rec_role_raw = placement["Designation"]
+    rec_role = format_professional_role(rec_role_raw, qual)
 
     sub_rec = f"Recommended role, based purely on the assessment scores, skill matrix, and other-skills data recorded for <b>{name}</b>:"
     story.append(Paragraph(sub_rec, styles["subtitle"]))
     story.append(Spacer(1, 6 * pt))
 
-    # Role Banner
+    # Role Banner with [AI] badge
+    ai_badge = Paragraph(
+        "<font size='8' color='#FFFFFF'><b>&nbsp;AI&nbsp;</b></font>",
+        ParagraphStyle("AIBadge", parent=styles["body_p"], alignment=1)
+    )
+    role_text_p = Paragraph(
+        f"<font size='11' color='#FFFFFF'><b>{rec_role}</b></font>",
+        ParagraphStyle("RoleText", parent=styles["body_p"], alignment=0)
+    )
     role_banner = Table(
-        [
-            [
-                Paragraph(f"<font size='13' color='#FFFFFF'><b>{rec_role}</b></font>", styles["body_p"]),
-            ]
-        ],
-        colWidths=[523 * pt],
+        [[ai_badge, role_text_p]],
+        colWidths=[35 * pt, 488 * pt],
     )
     role_banner.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), C_PLUM_DARK),
-        ("PADDING", (0, 0), (-1, -1), 8),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#DE4F73")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("PADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(role_banner)
-    story.append(Spacer(1, 10 * pt))
+    story.append(Spacer(1, 8 * pt))
 
     # WHY THIS ROLE FITS bullets
     why_fits = []
@@ -1001,7 +1089,6 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
             f"scientific foundation, ideally suited to hospital operations and patient-facing administration."
         )
 
-    # Technical & analytical scores
     tech_score = skill_scores.get("Technical Skill\nOut of 10") or skill_scores.get("Technical Skill") or 10.0
     anal_score = skill_scores.get("Analytical Skill\nOut of 10") or skill_scores.get("Analytical Skill") or 10.0
     why_fits.append(
@@ -1010,7 +1097,6 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         f"manage patient registrations, and troubleshoot daily front-desk workflows."
     )
 
-    # Communication & Languages
     comm_score = skill_scores.get("Communication Skill\nOut of 10") or skill_scores.get("Communication Skill") or 8.0
     other_skills_text = rec.get("other_skills", {}).get("Other Skills", "")
     lang_note = f", reinforced by recorded skills in {other_skills_text}" if other_skills_text else ""
@@ -1019,7 +1105,6 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
         f"supports effective, empathetic interactions with patients, doctors, and visitors."
     )
 
-    # Practical scores
     pract_scores = []
     for k in ["Ms Word Practical", "Ms Excel Practical", "Hospital Administration & Banking"]:
         if k in subj_scores:
@@ -1030,17 +1115,15 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
             f"directly to billing, report generation, and patient records documentation."
         )
 
-    # Reliability
     why_fits.append(
         f"<b>Reliability:</b> {att_pct:.1f}% attendance across {rec.get('total_trackable_days', 51)} training days demonstrates "
         f"the discipline and consistency essential for shift-based hospital operations."
     )
 
-    # Alignment with actual placement
     if placement:
         why_fits.append(
             f"<b>Placement alignment:</b> This recommendation independently aligns with her actual placement outcome — "
-            f"<b>{placement.get('Designation')}</b> at <b>{placement.get('Organization')}</b> ({placement.get('salary_display')}) — "
+            f"<b>{p_desig}</b> at <b>{placement.get('Organization')}</b> ({placement.get('salary_display')}) — "
             f"confirming data-driven role readiness."
         )
     else:
@@ -1077,15 +1160,15 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     story.append(Paragraph("WHY THIS ROLE FITS", styles["section_h1"]))
     for wf in why_fits:
         story.append(Paragraph(f"•  {wf}", styles["body_p"]))
-        story.append(Spacer(1, 3 * pt))
+        story.append(Spacer(1, 2.5 * pt))
 
-    story.append(Spacer(1, 6 * pt))
+    story.append(Spacer(1, 5 * pt))
     story.append(Paragraph("SKILL GAPS TO ADDRESS FOR THIS ROLE", styles["section_h1"]))
     for sg in skill_gaps:
         story.append(Paragraph(f"•  {sg}", styles["body_p"]))
-        story.append(Spacer(1, 3 * pt))
+        story.append(Spacer(1, 2.5 * pt))
 
-    story.append(Spacer(1, 10 * pt))
+    story.append(Spacer(1, 8 * pt))
 
     # Bottom disclaimer
     disclaimer_text = (
@@ -1097,7 +1180,7 @@ def generate_student_report_pdf(student_metric: dict, batch_name: str = "CCDP 2"
     disc_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
         ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-        ("PADDING", (0, 0), (-1, -1), 6),
+        ("PADDING", (0, 0), (-1, -1), 5),
     ]))
     story.append(disc_table)
 

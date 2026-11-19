@@ -205,7 +205,41 @@ export default function MiniChatbot() {
           />
 
           {/* Composer Footer */}
-          <div className="p-3 bg-surface border-t border-surface-border shrink-0">
+          <div className="p-3 bg-surface border-t border-surface-border shrink-0 space-y-2">
+            {/* Quick-action pill row */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-[10px]">
+              <button
+                onClick={() => handleStarterClick("Who are the top performers in the current batch?")}
+                className="px-2 py-0.5 rounded-full bg-surface-dim hover:bg-surface-high border border-surface-border text-ink whitespace-nowrap transition-colors"
+              >
+                ⭐ Top 5
+              </button>
+              <button
+                onClick={() => handleStarterClick("Show Abinaya M's profile, scores, and PDF report link")}
+                className="px-2 py-0.5 rounded-full bg-brand-maroon/10 hover:bg-brand-maroon/20 border border-brand-maroon/20 text-brand-maroon font-semibold whitespace-nowrap transition-colors"
+              >
+                📄 Abinaya Report
+              </button>
+              <button
+                onClick={() => handleStarterClick("Show Kauvery Hospital department openings and unit allocation")}
+                className="px-2 py-0.5 rounded-full bg-surface-dim hover:bg-surface-high border border-surface-border text-ink whitespace-nowrap transition-colors"
+              >
+                🏥 Kauvery Roles
+              </button>
+              <button
+                onClick={() => handleStarterClick("Show unplaced students seeking placement")}
+                className="px-2 py-0.5 rounded-full bg-surface-dim hover:bg-surface-high border border-surface-border text-ink whitespace-nowrap transition-colors"
+              >
+                💼 Unplaced List
+              </button>
+              <button
+                onClick={() => handleStarterClick("Which students need critical remediation?")}
+                className="px-2 py-0.5 rounded-full bg-warning/10 hover:bg-warning/20 border border-warning/20 text-warning font-semibold whitespace-nowrap transition-colors"
+              >
+                ⚠ Remediation
+              </button>
+            </div>
+
             <ChatComposer
               input={input}
               setInput={setInput}

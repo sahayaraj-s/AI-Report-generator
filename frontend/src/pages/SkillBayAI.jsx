@@ -340,7 +340,33 @@ export default function SkillBayAI() {
           />
 
           {/* Composer Footer */}
-          <div className="p-4 bg-surface border-t border-surface-border">
+          <div className="p-4 bg-surface border-t border-surface-border space-y-2.5">
+            {/* Quick Action Prompts Bar */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              <span className="text-[10px] font-bold text-ink-faint shrink-0 flex items-center gap-1 uppercase tracking-wider">
+                <Sparkles size={11} className="text-brand-maroon" />
+                <span>Quick:</span>
+              </span>
+              {[
+                { label: "⭐ Top 5 Candidates", prompt: "Who are the top 5 candidates in CCDP?" },
+                { label: "📄 Abinaya M Report", prompt: "Generate placement report for Abinaya M with download link" },
+                { label: "🏥 Kauvery Openings", prompt: "What roles and openings are available across Kauvery Hospital facilities?" },
+                { label: "💼 Unplaced List", prompt: "List all unplaced students who need placement assistance" },
+                { label: "⚠️ 30-Day Remediation", prompt: "Which candidates require remediation and what is their targeted 30-day roadmap?" },
+                { label: "🗣️ Tanglish Query", prompt: "Batch la yaar top performers? Kauvery hospital ku evlo per fit aavanga?" },
+              ].map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => sendMessage(item.prompt)}
+                  disabled={isStreaming}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface-container hover:bg-brand-maroon/10 border border-surface-border hover:border-brand-maroon/30 text-ink hover:text-brand-maroon transition-all shrink-0 disabled:opacity-50"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
             <ChatComposer
               input={input}
               setInput={setInput}

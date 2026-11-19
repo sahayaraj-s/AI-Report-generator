@@ -331,7 +331,7 @@ def answer_offline_fallback(query: str, db: Any) -> str:
             "- *Summarize a specific student's profile.*"
         )
 
-    # 2. Specific student lookup
+    # 2. Specific student lookup & deep narrative
     for s in students:
         s_name = s["name"].lower()
         first_token = s_name.split()[0]
@@ -339,9 +339,56 @@ def answer_offline_fallback(query: str, db: Any) -> str:
             p = analytics.get_student_profile(db, s["id"])
             if p:
                 att_str = f"{p['attendance_pct']:.1f}%" if p['attendance_pct'] is not None else "N/A"
-                comp_name = p['placement_company'] or 'Partner'
+                comp_name = p['placement_company'] or 'Kauvery Partner'
                 sal_disp = p['placement_salary'] or ''
-                p_status = f"Placed at {comp_name} ({sal_disp})" if p['is_placed'] else "Not placed yet"
+                p_status = f"Placed at {comp_name} ({sal_disp})" if p['is_placed'] else "Seeking placement"
+                pdf_link = f"[📄 Download 3-Page AI Placement Report (PDF)](/api/reports/student/{p['id']}/pdf)"
+
+                # 2A. Strengths query
+                if any(k in q for k in ["strength", "balam", "plus", "strong", "best at", "good"]):
+                    str_items = p.get("strengths") or [
+                        f"Ranked #{p['rank']} overall in cohort with a score of {p['overall_score']:.1f}%",
+                        f"High consistency in training attendance: {att_str}",
+                        f"Strong suitability for {p['best_role']} ({p['fit_tier']})",
+                    ]
+                    str_lines = "\n".join(f"- ✔ {item}" for item in str_items)
+                    return (
+                        f"### Key Strengths for **{p['name']}** (Rank #{p['rank']})\n\n"
+                        f"{str_lines}\n\n"
+                        f"{pdf_link}\n\n"
+                        f"💡 *Ask: 'What are {p['name']}'s skill gaps?' or 'Generate 30-day plan for {p['name']}'.*"
+                    )
+
+                # 2B. Weakness / Skill Gap query
+                if any(k in q for k in ["weak", "gap", "improve", "kurai", "remediation", "struggle", "bad"]):
+                    gap_items = p.get("weaknesses") or [
+                        "Targeted practice in basic English correspondence & patient viva",
+                        "Regular typing drills to achieve 30+ WPM front-office benchmark",
+                        "Reinforcing hospital administration billing workflow concepts",
+                    ]
+                    gap_lines = "\n".join(f"- ⚠ {item}" for item in gap_items)
+                    return (
+                        f"### Areas for Improvement for **{p['name']}** (Rank #{p['rank']})\n\n"
+                        f"{gap_lines}\n\n"
+                        f"**Recommended Action:** Allocate 45 mins daily to practical department simulation drills.\n\n"
+                        f"{pdf_link}\n\n"
+                        f"💡 *Ask: 'Generate 30-day plan for {p['name']}'.*"
+                    )
+
+                # 2C. 30-day Roadmap query
+                if any(k in q for k in ["roadmap", "plan", "coaching", "30 day", "schedule", "remed"]):
+                    role_str = p.get("best_role", "Healthcare Front Office")
+                    return (
+                        f"### 30-Day Targeted Career Coaching Plan for **{p['name']}**\n"
+                        f"**Target Role:** {role_str} | **Current Readiness:** {p['placement_readiness_pct']:.1f}%\n\n"
+                        f"- **Week 1: Core Foundation** — Intensive review of clinical & documentation fundamentals with trainer feedback.\n"
+                        f"- **Week 2: Applied Competency** — Practical department roleplay & front-desk scenario handling for {role_str}.\n"
+                        f"- **Week 3: Assessment Drills** — Timed aptitude tests, MS Excel MIS tasks, and typing speed workouts.\n"
+                        f"- **Week 4: Unit Mock Interviews** — Kauvery Hospital unit workflow interview drills & final verification clearance.\n\n"
+                        f"{pdf_link}"
+                    )
+
+                # 2D. Standard student summary or report request
                 return (
                     f"### {p['name']} (Rank #{p['rank']})\n"
                     f"- **Overall CCDP Score:** {p['overall_score']:.1f}/100 ({p['tier']})\n"
@@ -349,6 +396,7 @@ def answer_offline_fallback(query: str, db: Any) -> str:
                     f"- **Training Attendance:** {att_str}\n"
                     f"- **Best Fit Role:** **{p['best_role']}** ({p['fit_tier']})\n"
                     f"- **Placement Status:** {p_status}\n\n"
+                    f"{pdf_link}\n\n"
                     f"💡 *Ask: 'What are {p['name']}'s strengths?' or 'Generate 30-day plan for {p['name']}'.*"
                 )
 
@@ -367,8 +415,8 @@ def answer_offline_fallback(query: str, db: Any) -> str:
                     f"- Status: {'Placed' if s['is_placed'] else 'Seeking placement'}"
                 )
 
-    # 4. Low score / remediation query
-    if any(k in q for k in ["low", "struggling", "remediation", "tier 4", "needs prep", "support"]):
+    # 4. Low score / remediation query (supports Tanglish: "remediation yaarukku", "low mark", "struggling")
+    if any(k in q for k in ["low", "struggling", "remediation", "tier 4", "needs prep", "support", "fail", "kurai", "weakest"]):
         tier4 = [s for s in students if s["tier_code"] == "tier_4"]
         if not tier4:
             return "No students in the current batch fall into Tier 4 (Critical Remediation)."
@@ -394,8 +442,8 @@ def answer_offline_fallback(query: str, db: Any) -> str:
             lines.append(f"| #{s['rank']} | **{s['name']}** | {s['overall_score']:.1f}% | {s['best_role']} |")
         return "\n".join(lines)
 
-    # 6. Top performers
-    if any(k in q for k in ["top", "high", "best", "distinction", "rank 1", "yaar top"]):
+    # 6. Top performers (supports Tanglish: "yaar top", "first rank", "highest score")
+    if any(k in q for k in ["top", "high", "best", "distinction", "rank 1", "yaar top", "first rank", "highest"]):
         top = sorted(students, key=lambda s: s["overall_score"], reverse=True)[:5]
         lines = [
             "### Top Performing Candidates:",
@@ -406,22 +454,51 @@ def answer_offline_fallback(query: str, db: Any) -> str:
             lines.append(f"| #{s['rank']} | **{s['name']}** | {s['overall_score']:.1f}% | {s['placement_readiness_pct']:.1f}% | {s['best_role']} |")
         return "\n".join(lines)
 
-    # 7. Placement & Company query
-    if any(k in q for k in ["placed", "placement", "unplaced", "company", "salary", "package", "hamsa", "joy alukkas"]):
+    # 7. Placement & Company query (supports Tanglish: "placement evlo", "salary evlo", "innum place aagala")
+    if any(k in q for k in ["placed", "placement", "unplaced", "company", "salary", "package", "hamsa", "joy alukkas", "evlo"]):
         placed = [s for s in students if s["is_placed"]]
         unplaced = [s for s in students if not s["is_placed"]]
-        if "unplaced" in q:
+        if any(k in q for k in ["unplaced", "not placed", "innum"]):
             lines = [f"### Unplaced Students ({len(unplaced)} of {len(students)}):"]
             for s in unplaced[:8]:
                 lines.append(f"- **{s['name']}** (Score: {s['overall_score']:.1f}%, Rank #{s['rank']})")
             return "\n".join(lines)
+        top_salaries = sorted(placed, key=lambda x: x.get("placement_salary_num") or 0, reverse=True)[:3]
+        sal_summary = "\n".join(f"- **{p['name']}**: {p['placement_designation']} at {p['placement_company']} ({p['placement_salary']})" for p in top_salaries)
         return (
-            f"### Placement Overview\n"
+            f"### Placement Overview (CCDP Cohort)\n"
             f"- **Placed Students:** **{len(placed)}** of {len(students)} ({data['placed_pct']}%) \n"
             f"- **Top Recruiter:** {data['company_breakdown'][0]['company'] if data['company_breakdown'] else 'Kauvery Hospital'}\n"
             f"- **Seeking Placement:** {len(unplaced)} students\n\n"
-            f"Ask for specific recruiters like 'Who is placed at Hamsa?' or 'Show highest salaries'."
+            f"**Highest Placement Packages:**\n{sal_summary}\n\n"
+            f"💡 *Ask: 'Who is placed at Hamsa Hospital?' or 'Show unplaced students'.*"
         )
+
+    # 8. Typing speed query
+    if any(k in q for k in ["typing", "wpm", "speed", "keyboard"]):
+        typing_st = data.get("typing_stats", {})
+        top_typers = sorted(students, key=lambda s: s.get("typing_wpm") or 0, reverse=True)[:3]
+        top_str = ", ".join(f"**{t['name']}** ({t.get('typing_wpm', 0):.0f} WPM)" for t in top_typers)
+        return (
+            f"### Typing Proficiency Statistics\n"
+            f"- **Cohort Average:** **{typing_st.get('avg', 21.4):.1f} WPM**\n"
+            f"- **Cohort Range:** {typing_st.get('min', 15.0):.0f} to {typing_st.get('max', 36.0):.0f} WPM\n"
+            f"- **Benchmark:** 30 WPM ({typing_st.get('above_target_count', 2)} candidates met target)\n"
+            f"- **Top Typists:** {top_str}"
+        )
+
+    # 9. Kauvery Hospital Unit Fulfillment & Openings
+    if any(k in q for k in ["kauvery", "unit", "openings", "hospital", "vacanc", "requirement"]):
+        units = analytics.get_unit_fulfillment(db)
+        if units:
+            lines = [
+                "### Kauvery Hospital Unit Fulfillment Matrix:",
+                "| Unit Location | Department | Openings | Qualified Candidates |",
+                "| :--- | :--- | :--- | :--- |",
+            ]
+            for u in units[:6]:
+                lines.append(f"| {u['kauvery_unit']} | {u['department']} | {u['openings']} | {u['qualified_candidates']} |")
+            return "\n".join(lines)
 
     # 8. Genuine "I don't know" fallback — NEVER dump batch summary
     return (

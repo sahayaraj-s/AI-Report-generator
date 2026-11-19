@@ -98,6 +98,7 @@ export default function UploadStudentData() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportError, setReportError] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [downloadingStudentId, setDownloadingStudentId] = useState(null);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -317,6 +318,38 @@ export default function UploadStudentData() {
       setReportStep(0);
     } finally {
       setGeneratingReport(false);
+    }
+  };
+
+  const handleDownloadStudentReport = async (student) => {
+    if (!student) return;
+    const identifier = student.id || student.roll_number || student.name;
+    setDownloadingStudentId(identifier);
+    try {
+      const response = await api.post(
+        "/api/reports/live/student-pdf",
+        {
+          student,
+          batch_name: batchName,
+          course_name: courseName,
+        },
+        { responseType: "blob", timeout: 60000 }
+      );
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const cleanName = (student.name || "Student").replace(/\s+/g, "_");
+      const filename = `${cleanName}_Dashboard_Report.pdf`;
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error("Failed to generate student report:", err);
+      alert(err.response?.data?.detail || "Failed to generate individual student report.");
+    } finally {
+      setDownloadingStudentId(null);
     }
   };
 
@@ -741,50 +774,76 @@ export default function UploadStudentData() {
                       <th className="py-2 px-3 text-center">Attendance</th>
                       <th className="py-2 px-3 text-center">Readiness</th>
                       <th className="py-2 px-3">Top Role Match</th>
+                      <th className="py-2 px-3 text-right">3-Page Report</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-border">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-6 text-center text-ink-faint">
+                        <td colSpan={7} className="py-6 text-center text-ink-faint">
                           No candidates found matching the search.
                         </td>
                       </tr>
                     ) : (
-                      filteredStudents.map((s, idx) => (
-                        <tr key={s.id || idx} className="hover:bg-surface-high/50 transition-colors">
-                          <td className="py-2.5 px-3 text-center font-bold tabular-nums text-ink">
-                            #{s.rank || idx + 1}
-                          </td>
-                          <td className="py-2.5 px-3 font-semibold text-ink">
-                            <div>{s.name}</div>
-                            {s.roll_number && (
-                              <div className="text-[10px] text-ink-faint font-normal">
-                                {s.roll_number}
+                      filteredStudents.map((s, idx) => {
+                        const sId = s.id || s.roll_number || s.name;
+                        const isDownloading = downloadingStudentId === sId;
+                        return (
+                          <tr key={sId || idx} className="hover:bg-surface-high/50 transition-colors">
+                            <td className="py-2.5 px-3 text-center font-bold tabular-nums text-ink">
+                              #{s.rank || idx + 1}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-ink">
+                              <div>{s.name}</div>
+                              {s.roll_number && (
+                                <div className="text-[10px] text-ink-faint font-normal">
+                                  {s.roll_number}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-bold tabular-nums text-ink">
+                              {s.overall_score}%
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-ink-muted">
+                              {s.attendance_pct !== null ? `${s.attendance_pct}%` : "N/A"}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <Badge tone={s.placement_ready ? "success" : "warning"}>
+                                {s.placement_ready ? "Ready" : "Needs Prep"}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="font-medium text-ink truncate max-w-[160px]">
+                                {s.best_role || "Healthcare Operations"}
                               </div>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-bold tabular-nums text-ink">
-                            {s.overall_score}%
-                          </td>
-                          <td className="py-2.5 px-3 text-center text-ink-muted">
-                            {s.attendance_pct !== null ? `${s.attendance_pct}%` : "N/A"}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <Badge tone={s.placement_ready ? "success" : "warning"}>
-                              {s.placement_ready ? "Ready" : "Needs Prep"}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-medium text-ink truncate max-w-[180px]">
-                              {s.best_role || "Healthcare Operations"}
-                            </div>
-                            <span className="text-[10px] text-brand-maroon font-semibold">
-                              {s.fit_tier || "Fit"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
+                              <span className="text-[10px] text-brand-maroon font-semibold">
+                                {s.fit_tier || "Fit"}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadStudentReport(s)}
+                                disabled={isDownloading}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-maroon/10 hover:bg-brand-maroon text-brand-maroon hover:text-white transition-all disabled:opacity-50"
+                                title={`Download 3-Page AI Placement Report for ${s.name}`}
+                              >
+                                {isDownloading ? (
+                                  <>
+                                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                    <span>Rendering...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText size={12} />
+                                    <span>Download PDF</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

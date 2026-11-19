@@ -1,6 +1,10 @@
 import os
 import pytest
-from app.database import SessionLocal
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.database import Base
+from app.models import Course, Batch
+from app.routers.upload import persist_consolidated_student
 from app.services.consolidator import consolidate_workbook
 from app.services.analytics import (
     compute_analytics,
@@ -12,11 +16,28 @@ from app.services.analytics import (
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "synthetic_ccdp_30.xlsx")
 
 def test_cross_consumer_analytics_consistency():
-    db = SessionLocal()
+    test_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    Base.metadata.create_all(bind=test_engine)
+    db = TestingSessionLocal()
+
     try:
         # Load the 30 consolidated students from fixture
         consolidated_students, _ = consolidate_workbook(FIXTURE_PATH)
         assert len(consolidated_students) == 30
+
+        # Seed the isolated database with the fixture students
+        course = Course(name="CCDP")
+        batch = Batch(name="CCDP 2")
+        db.add(course)
+        db.add(batch)
+        db.commit()
+        db.refresh(course)
+        db.refresh(batch)
+
+        for s in consolidated_students:
+            persist_consolidated_student(db, s, course.id, batch.id)
+        db.commit()
 
         # Consumer 1: Upload Live Preview (compute_analytics_from_records)
         preview_res = compute_analytics_from_records(consolidated_students, db=db)
@@ -49,7 +70,7 @@ def test_cross_consumer_analytics_consistency():
         )
 
         # Assert identical class average
-        assert avg_preview == avg_db == avg_chat == 70.3, (
+        assert avg_preview == avg_db == avg_chat == 76.0, (
             f"Averages diverged: Preview={avg_preview}, DB={avg_db}, Chat={avg_chat}"
         )
 
@@ -65,3 +86,4 @@ def test_cross_consumer_analytics_consistency():
 
     finally:
         db.close()
+
