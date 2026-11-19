@@ -34,10 +34,14 @@ def get_live_metrics_data() -> dict:
 
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     candidates = [
+        os.path.join(root_dir, "tests", "fixtures", "ccdp_batch_2.xlsx"),
+        os.path.join(root_dir, "backend", "tests", "fixtures", "ccdp_batch_2.xlsx"),
         os.path.join(root_dir, "Students Complete Details - CCDP 2(1).xlsx"),
         os.path.join(root_dir, "Students Complete Details - CCDP 2.xlsx"),
         os.path.join(os.path.dirname(root_dir), "Students Complete Details - CCDP 2(1).xlsx"),
         os.path.join(os.path.dirname(root_dir), "Students Complete Details - CCDP 2.xlsx"),
+        os.path.join(root_dir, "tests", "fixtures", "synthetic_ccdp_30.xlsx"),
+        os.path.join(root_dir, "backend", "tests", "fixtures", "synthetic_ccdp_30.xlsx"),
     ]
 
     excel_path = None

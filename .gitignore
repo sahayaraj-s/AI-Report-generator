@@ -26,6 +26,8 @@ dist/
 uploads/
 output_*.pdf
 backend/output_*.pdf
+output_reports/
+pdf_previews/
 *_schema_manifest.json
 
 # Confidential student data and template fixtures
