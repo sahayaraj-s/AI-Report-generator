@@ -131,7 +131,6 @@ export default function DashboardOverview() {
   const [isLiveStreaming, setIsLiveStreaming] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(15); // seconds
   const [lastRefreshedAt, setLastRefreshedAt] = useState(new Date());
-  const [selectedHospitalUnit, setSelectedHospitalUnit] = useState("All");
   const [selectedStudentPreview, setSelectedStudentPreview] = useState(null);
   const [downloadingStudentId, setDownloadingStudentId] = useState(null);
 
@@ -252,14 +251,6 @@ export default function DashboardOverview() {
   const gridStudents = useMemo(() => {
     const rawStudents = data?.students || data?.leaderboard || [];
     let list = [...rawStudents];
-    if (selectedHospitalUnit && selectedHospitalUnit !== "All") {
-      const u = selectedHospitalUnit.toLowerCase();
-      list = list.filter(
-        (s) =>
-          (s.placement_company && s.placement_company.toLowerCase().includes(u)) ||
-          (s.best_role && s.best_role.toLowerCase().includes(u))
-      );
-    }
     if (gridSearch.trim()) {
       const q = gridSearch.toLowerCase();
       list = list.filter(
@@ -283,14 +274,6 @@ export default function DashboardOverview() {
     });
     return list;
   }, [data?.students, data?.leaderboard, gridSearch, gridSortBy, gridSortDir]);
-
-  const filteredKauveryMatrix = useMemo(() => {
-    if (!data?.kauvery_unit_matrix) return [];
-    if (selectedHospitalUnit === "All") return data.kauvery_unit_matrix;
-    return data.kauvery_unit_matrix.filter((r) =>
-      r.kauvery_unit?.toLowerCase().includes(selectedHospitalUnit.toLowerCase())
-    );
-  }, [data?.kauvery_unit_matrix, selectedHospitalUnit]);
 
   const pagedStudents = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -456,7 +439,7 @@ export default function DashboardOverview() {
                   Cohort Top Performer
                 </div>
                 <div className="text-xs font-bold text-ink truncate">
-                  {data.top_performer || "Abinaya M"}
+                  {data.total_students > 0 && data.top_performer ? data.top_performer : "—"}
                 </div>
               </div>
             </div>
@@ -470,7 +453,7 @@ export default function DashboardOverview() {
                   Hospital Offer Rate
                 </div>
                 <div className="text-xs font-bold text-ink">
-                  {data.placed_pct ?? 0}% ({data.placed_count ?? 0} Offers)
+                  {data.total_students > 0 ? `${data.placed_pct ?? 0}% (${data.placed_count ?? 0} Offers)` : "—"}
                 </div>
               </div>
             </div>
@@ -484,7 +467,7 @@ export default function DashboardOverview() {
                   Kauvery Unit Roles
                 </div>
                 <div className="text-xs font-bold text-ink truncate">
-                  {data.kauvery_unit_matrix?.length ?? 4} Active Openings
+                  {data.kauvery_unit_matrix?.length ? `${data.kauvery_unit_matrix.length} Active Openings` : "—"}
                 </div>
               </div>
             </div>
@@ -498,41 +481,14 @@ export default function DashboardOverview() {
                   Rapid Typists (≥30 WPM)
                 </div>
                 <div className="text-xs font-bold text-ink">
-                  {data.typing_stats?.above_target_count ?? 0} of {data.typing_stats?.total_tested ?? data.total_students} Candidates
+                  {data.total_students > 0
+                    ? `${data.typing_stats?.above_target_count ?? 0} of ${data.typing_stats?.total_tested ?? data.total_students} Candidates`
+                    : "—"}
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        {/* ── Kauvery Hospital Facility Filter Chips ─────────────────────────── */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-          <span className="text-[11px] font-bold text-ink-faint shrink-0 flex items-center gap-1.5 pl-1">
-            <Hospital size={14} className="text-brand-maroon" />
-            <span>Kauvery Unit:</span>
-          </span>
-          {["All", "Alwarpet", "Vadapalani", "Trichy", "Salem", "Hosur"].map((unit) => (
-            <button
-              key={unit}
-              onClick={() => setSelectedHospitalUnit(unit)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all shrink-0 ${
-                selectedHospitalUnit === unit
-                  ? "bg-brand-maroon text-white shadow-xs"
-                  : "bg-surface-container border border-surface-border text-ink-muted hover:text-ink hover:bg-surface-high"
-              }`}
-            >
-              {unit === "All" ? "All Facilities" : `Kauvery ${unit}`}
-            </button>
-          ))}
-          {selectedHospitalUnit !== "All" && (
-            <button
-              onClick={() => setSelectedHospitalUnit("All")}
-              className="text-[10px] text-brand-maroon font-bold hover:underline ml-1"
-            >
-              Clear Unit
-            </button>
-          )}
-        </div>
 
         {/* ── Cross-Filtering Slicers Card ────────────────────────────────────── */}
         <Card className="p-4 space-y-3">
@@ -719,83 +675,97 @@ export default function DashboardOverview() {
             <PowerBiKpiCard
               icon={TrendingUp}
               title="Avg CCDP Score"
-              value={data.average_score ?? 0}
-              unit="/ 100"
-              target={data.target_metrics?.score_target || 75.0}
-              targetLabel="Benchmark"
+              value={data.total_students > 0 ? (data.average_score ?? 0) : "—"}
+              unit={data.total_students > 0 ? "/ 100" : ""}
+              target={data.total_students > 0 ? (data.target_metrics?.score_target || 75.0) : undefined}
+              targetLabel={data.total_students > 0 ? "Benchmark" : undefined}
               delta={
-                data.average_score >= 75
-                  ? `+${(data.average_score - 75).toFixed(1)} pts`
-                  : `${(data.average_score - 75).toFixed(1)} pts`
+                data.total_students > 0
+                  ? data.average_score >= 75
+                    ? `+${(data.average_score - 75).toFixed(1)} pts`
+                    : `${(data.average_score - 75).toFixed(1)} pts`
+                  : undefined
               }
-              deltaType={data.average_score >= 75 ? "positive" : "negative"}
-              progressPct={data.average_score}
+              deltaType={data.total_students > 0 ? (data.average_score >= 75 ? "positive" : "negative") : "neutral"}
+              progressPct={data.total_students > 0 ? data.average_score : 0}
               accentColor="#8B1D55"
-              subtext={data.top_performer ? `Top: ${data.top_performer}` : "Verified genuine skills"}
+              subtext={
+                data.total_students > 0
+                  ? data.top_performer
+                    ? `Top: ${data.top_performer}`
+                    : "Verified genuine skills"
+                  : "No batch data loaded"
+              }
             />
 
             {/* 3. Remediation Required */}
             <PowerBiKpiCard
               icon={AlertTriangle}
               title="Remediation Required"
-              value={data.need_training ?? 0}
-              unit="candidates"
-              badgeText={`Crit: ${data.need_training_critical ?? 0} | Mod: ${data.need_training_moderate ?? 0}`}
-              delta={
-                data.need_training_critical === 0
-                  ? "0 Critical"
-                  : `${data.need_training_critical} Critical`
+              value={data.total_students > 0 ? (data.need_training ?? 0) : "—"}
+              unit={data.total_students > 0 ? "candidates" : ""}
+              badgeText={
+                data.total_students > 0
+                  ? `Crit: ${data.need_training_critical ?? 0} | Mod: ${data.need_training_moderate ?? 0}`
+                  : undefined
               }
-              deltaType={data.need_training_critical === 0 ? "positive" : "negative"}
+              delta={
+                data.total_students > 0
+                  ? data.need_training_critical === 0
+                    ? "0 Critical"
+                    : `${data.need_training_critical} Critical`
+                  : undefined
+              }
+              deltaType={data.total_students > 0 && data.need_training_critical === 0 ? "positive" : "neutral"}
               accentColor="#EFBC19"
               progressPct={
                 data.total_students > 0
                   ? ((data.total_students - data.need_training) / data.total_students) * 100
-                  : 100
+                  : 0
               }
-              subtext="Tailored 30-day coaching needed"
+              subtext={data.total_students > 0 ? "Tailored 30-day coaching needed" : "Upload batch to analyze"}
             />
 
             {/* 4. Placed (Actual Offers from Placement Sheet) */}
             <PowerBiKpiCard
               icon={Briefcase}
               title="Placed (Hospital Offers)"
-              value={data.placed_count ?? 0}
-              unit={`/ ${data.total_students ?? 0}`}
-              target={`${data.placed_pct ?? 0}%`}
-              targetLabel="Offer Rate"
-              delta={`${data.placed_count ?? 0} Confirmed`}
-              deltaType="positive"
+              value={data.total_students > 0 ? (data.placed_count ?? 0) : "—"}
+              unit={data.total_students > 0 ? `/ ${data.total_students ?? 0}` : ""}
+              target={data.total_students > 0 ? `${data.placed_pct ?? 0}%` : undefined}
+              targetLabel={data.total_students > 0 ? "Offer Rate" : undefined}
+              delta={data.total_students > 0 ? `${data.placed_count ?? 0} Confirmed` : undefined}
+              deltaType={data.total_students > 0 ? "positive" : "neutral"}
               accentColor="#22C55E"
-              progressPct={data.placed_pct ?? 0}
-              subtext="Offers from Placement Sheet"
+              progressPct={data.total_students > 0 ? (data.placed_pct ?? 0) : 0}
+              subtext={data.total_students > 0 ? "Offers from Placement Sheet" : "No offers recorded"}
             />
 
             {/* 5. Typing Speed Metric */}
             <PowerBiKpiCard
               icon={Keyboard}
               title="Typing Proficiency"
-              value={data.typing_stats?.avg ?? "—"}
-              unit={data.typing_stats?.avg ? "WPM" : ""}
-              target={`${data.target_metrics?.typing_target_wpm || 30} WPM`}
-              targetLabel="Benchmark"
+              value={data.total_students > 0 && data.typing_stats?.avg ? data.typing_stats.avg : "—"}
+              unit={data.total_students > 0 && data.typing_stats?.avg ? "WPM" : ""}
+              target={data.total_students > 0 ? `${data.target_metrics?.typing_target_wpm || 30} WPM` : undefined}
+              targetLabel={data.total_students > 0 ? "Benchmark" : undefined}
               delta={
-                data.typing_stats?.avg
+                data.total_students > 0 && data.typing_stats?.avg
                   ? `${data.typing_stats.above_target_count || 0} Met Target`
-                  : "Not tested"
+                  : undefined
               }
               deltaType={
-                data.typing_stats?.avg >= (data.target_metrics?.typing_target_wpm || 30)
+                data.total_students > 0 && data.typing_stats?.avg >= (data.target_metrics?.typing_target_wpm || 30)
                   ? "positive"
-                  : "negative"
+                  : "neutral"
               }
               accentColor="#72398C"
               progressPct={
-                data.typing_stats?.avg
+                data.total_students > 0 && data.typing_stats?.avg
                   ? Math.min(100, (data.typing_stats.avg / 40) * 100)
                   : 0
               }
-              subtext="Kept separate from skill mean"
+              subtext={data.total_students > 0 ? "Kept separate from skill mean" : "Not tested"}
             />
           </div>
 
@@ -1221,8 +1191,8 @@ export default function DashboardOverview() {
                 </Link>
               </div>
 
-              {filteredKauveryMatrix.length === 0 ? (
-                <EmptyState text="No active placement roles found for the selected Kauvery unit." />
+              {!data.kauvery_unit_matrix || data.kauvery_unit_matrix.length === 0 ? (
+                <EmptyState text="No active placement roles found." />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -1238,7 +1208,7 @@ export default function DashboardOverview() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-border">
-                      {filteredKauveryMatrix.map((r) => (
+                      {data.kauvery_unit_matrix.map((r) => (
                         <tr key={r.id || r.role_name} className="hover:bg-surface-high/50 transition-colors">
                           <td className="py-3 font-semibold text-ink">
                             <div className="text-sm font-semibold text-ink">{r.role_name}</div>
