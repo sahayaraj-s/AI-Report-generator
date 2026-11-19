@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, Query, status
 
 from app.config import settings
 
@@ -40,17 +40,24 @@ def _get_firebase_app():
     return None
 
 
-async def get_current_admin(authorization: str = Header(default=None)):
+async def get_current_admin(
+    authorization: str = Header(default=None),
+    token: str = Query(default=None),
+):
     if settings.dev_mode:
         return {"uid": "dev-admin", "email": "admin@skillbayacademy.dev", "name": "Admin (dev mode)"}
 
-    if not authorization or not authorization.startswith("Bearer "):
+    auth_token = None
+    if authorization and authorization.startswith("Bearer "):
+        auth_token = authorization.split(" ", 1)[1].strip()
+    elif token:
+        auth_token = token.strip()
+
+    if not auth_token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
 
-    token = authorization.split(" ", 1)[1].strip()
-
     # Allow dev mock token as a safe fallback
-    if token == "dev-mock-token":
+    if auth_token == "dev-mock-token":
         return {"uid": "dev-admin", "email": "admin@skillbayacademy.com", "name": "Admin"}
 
     # 1. Attempt verification using google.oauth2.id_token with Google public certificates
@@ -59,7 +66,7 @@ async def get_current_admin(authorization: str = Header(default=None)):
         from google.auth.transport import requests as google_requests
 
         decoded = id_token.verify_firebase_token(
-            token,
+            auth_token,
             google_requests.Request(),
             audience="skill-bay-ai",
         )
@@ -77,7 +84,7 @@ async def get_current_admin(authorization: str = Header(default=None)):
 
         fb_app = _get_firebase_app()
         if fb_app:
-            decoded = firebase_auth.verify_id_token(token)
+            decoded = firebase_auth.verify_id_token(auth_token)
             return {
                 "uid": decoded["uid"],
                 "email": decoded.get("email"),
@@ -87,3 +94,60 @@ async def get_current_admin(authorization: str = Header(default=None)):
         logger.debug(f"[Auth] firebase_admin verification: {f_err}")
 
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+
+
+async def get_optional_admin(
+    authorization: str = Header(default=None),
+    token: str = Query(default=None),
+):
+    """
+    Allows request to proceed even if unauthenticated.
+    Used for direct report downloads where browser links don't pass headers.
+    """
+    if settings.dev_mode:
+        return {"uid": "dev-admin", "email": "admin@skillbayacademy.dev", "name": "Admin (dev mode)"}
+
+    auth_token = None
+    if authorization and authorization.startswith("Bearer "):
+        auth_token = authorization.split(" ", 1)[1].strip()
+    elif token:
+        auth_token = token.strip()
+
+    if not auth_token:
+        return None
+
+    if auth_token == "dev-mock-token":
+        return {"uid": "dev-admin", "email": "admin@skillbayacademy.com", "name": "Admin"}
+
+    try:
+        from google.oauth2 import id_token
+        from google.auth.transport import requests as google_requests
+
+        decoded = id_token.verify_firebase_token(
+            auth_token,
+            google_requests.Request(),
+            audience="skill-bay-ai",
+        )
+        return {
+            "uid": decoded.get("user_id") or decoded.get("sub") or decoded.get("uid"),
+            "email": decoded.get("email"),
+            "name": decoded.get("name") or decoded.get("email") or "Admin",
+        }
+    except Exception:
+        pass
+
+    try:
+        from firebase_admin import auth as firebase_auth
+
+        fb_app = _get_firebase_app()
+        if fb_app:
+            decoded = firebase_auth.verify_id_token(auth_token)
+            return {
+                "uid": decoded["uid"],
+                "email": decoded.get("email"),
+                "name": decoded.get("name", decoded.get("email")),
+            }
+    except Exception:
+        pass
+
+    return None

@@ -23,7 +23,7 @@ from reportlab.platypus import (
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_admin
+from app.auth import get_current_admin, get_optional_admin
 from app.database import get_db
 from app.models import AnalysisResult, Batch, Course, JobRoleModel, Skill, Student, StudentScore
 
@@ -74,18 +74,36 @@ def _table_style_base():
 # ---------------------------------------------------------------------------
 
 @router.get("/student/{student_id}/pdf")
-def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Depends(get_optional_admin)):
     student = db.query(Student).get(student_id)
     if not student:
-        raise HTTPException(404, "Student not found")
+        # Check fallback live metrics bundle by index or rank if database has not been seeded yet
+        from app.services.chat_service import get_live_metrics_data
+        from pdf_generator import generate_student_report_pdf
+        bundle = get_live_metrics_data()
+        student_rec = None
+        if bundle and "per_student" in bundle:
+            students_list = list(bundle["per_student"].values())
+            if 1 <= student_id <= len(students_list):
+                student_rec = students_list[student_id - 1]
+        if not student_rec:
+            raise HTTPException(404, "Student not found")
+
+        pdf_bytes = generate_student_report_pdf(student_rec, batch_name="CCDP 2")
+        safe_name = str(student_rec.get("display_name", "Student")).replace(" ", "_")
+        filename = f"{safe_name}_Dashboard_Report.pdf"
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     analysis = (
         db.query(AnalysisResult)
         .filter_by(student_id=student.id)
         .order_by(AnalysisResult.created_at.desc())
         .first()
     )
-    if not analysis:
-        raise HTTPException(400, "No analysis available yet for this student — run analysis first")
 
     # 1. Try to generate Canva-matching 3-page PDF from live metrics data
     try:
@@ -1027,7 +1045,7 @@ def _build_live_report_pdf(students: list, batch_name: str, course_name: str, ef
 async def live_report_pdf(
     payload: dict,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    admin=Depends(get_optional_admin),
 ):
     """Generate a live-session PDF report from uploaded student analysis data."""
     students = payload.get("students", [])
@@ -1054,7 +1072,7 @@ async def live_report_pdf(
 async def live_report_image(
     payload: dict,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    admin=Depends(get_optional_admin),
 ):
     """Generate a live-session PNG image of the report (renders first page of PDF as image)."""
     from datetime import datetime
@@ -1097,7 +1115,7 @@ async def live_report_image(
 async def live_student_report_pdf(
     payload: dict,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    admin=Depends(get_optional_admin),
 ):
     """
     Generate an individual student's publication-grade 3-page Canva-style PDF report
