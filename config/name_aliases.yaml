@@ -1,0 +1,9 @@
+# Name Aliases for cross-sheet resolution
+# Key: Alternate/misspelled name (normalized: lowercase, stripped)
+# Value: Canonical name in Master sheet (normalized)
+
+aliases:
+  "madhumitha k": "mathumitha k"
+  "sambath s": "sampath s"
+  "smitha s": "smitha a"
+  "sneka m": "snekha m"

@@ -487,20 +487,20 @@ def build_unified_student_data(student_rec: Dict[str, Any], batch_metrics: Optio
 
     # 2. Performance KPIs
     rank = int(student_rec.get("class_rank") or student_rec.get("rank") or 1)
-    class_size = int(student_rec.get("class_size") or (batch_metrics.get("student_count") if batch_metrics else 30) or 30)
+    class_size = int(student_rec.get("class_size") or (batch_metrics.get("student_count") if batch_metrics else 1) or 1)
     is_top_performer = (rank <= 3)
     
     total_score = float(student_rec.get("total_score") or 0.0)
-    total_max = float(student_rec.get("total_max") or 265.0)
+    total_max = float(student_rec.get("total_max") or (batch_metrics.get("total_batch_max") if batch_metrics else 240.0) or 240.0)
     overall_pct = float(student_rec.get("overall_pct") or (round((total_score / total_max) * 100, 1) if total_max else 0.0))
     
     attendance_pct = float(student_rec.get("attendance_pct") or 0.0)
     present_days = int(student_rec.get("present_days") or 0)
-    total_days = int(student_rec.get("total_trackable_days") or (batch_metrics.get("total_days") if batch_metrics else 51) or 51)
+    total_days = int(student_rec.get("total_trackable_days") or (batch_metrics.get("total_days") if batch_metrics else 50) or 50)
     class_avg_overall_pct = float(
         student_rec.get("class_avg_overall_pct")
-        or (batch_metrics.get("class_avg_overall_pct") if batch_metrics else 71.1)
-        or 71.1
+        or (batch_metrics.get("class_avg_overall_pct") if batch_metrics else 78.5)
+        or 78.5
     )
 
     # Typing speed & range
@@ -520,7 +520,18 @@ def build_unified_student_data(student_rec: Dict[str, Any], batch_metrics: Optio
         typing_comparison = "close to class average"
 
     # 3. Subject Scores
-    assessment_scores = student_rec.get("assessment_scores") or {}
+    raw_assess = student_rec.get("assessment_scores") or student_rec.get("subject_scores") or {}
+    if isinstance(raw_assess, list):
+        assessment_scores = {
+            item["component"]: item.get("score_num", item.get("score", 0.0))
+            for item in raw_assess
+            if isinstance(item, dict) and "component" in item
+        }
+    elif isinstance(raw_assess, dict):
+        assessment_scores = raw_assess
+    else:
+        assessment_scores = {}
+
     max_marks = student_rec.get("max_marks") or (batch_metrics.get("max_marks") if batch_metrics else {}) or {}
     class_sub_avgs = (
         student_rec.get("class_avg_pct_per_subject")
@@ -528,61 +539,47 @@ def build_unified_student_data(student_rec: Dict[str, Any], batch_metrics: Optio
         or {}
     )
     
-    standard_order = [
-        "Role Play on Soft Skills",
-        "Basic Computer",
-        "MS Word — Theory",
-        "MS Word — Practical",
-        "Basic English",
-        "MS Excel — Theory",
-        "MS Excel — Practical",
-        "Business Writing",
-        "Hospital Administration & Banking",
-    ]
+    # Dynamically determine subject components: use max_marks if available, else assessment_scores keys
+    components_to_render = list(max_marks.keys()) if max_marks else list(assessment_scores.keys())
+    absent_subjs = student_rec.get("absent_subjects") or []
     
     subject_rows: List[SubjectScoreRow] = []
-    for std_name in standard_order:
-        found_key = None
-        for k in assessment_scores.keys():
-            k_clean = k.replace("—", "").replace("-", "").replace(" ", "").lower()
-            std_clean = std_name.replace("—", "").replace("-", "").replace(" ", "").lower()
-            if k_clean == std_clean or k_clean in std_clean or std_clean in k_clean:
-                found_key = k
-                break
-                
-        if found_key:
-            score = float(assessment_scores[found_key])
-            m_score = float(max_marks.get(found_key) or 25.0)
-            if "computer" in std_name.lower():
-                m_score = 50.0
-            elif "soft skills" in std_name.lower() or "business writing" in std_name.lower():
-                m_score = 20.0
-            elif "hospital" in std_name.lower() or "word" in std_name.lower() or "excel" in std_name.lower() or "english" in std_name.lower():
-                m_score = 25.0
-                
-            pct = round((score / m_score) * 100, 1) if m_score else 0.0
-            
-            c_avg = 70.0
-            for ck, cv in class_sub_avgs.items():
-                ck_clean = ck.replace("—", "").replace("-", "").replace(" ", "").lower()
-                std_clean = std_name.replace("—", "").replace("-", "").replace(" ", "").lower()
-                if ck_clean == std_clean or ck_clean in std_clean:
-                    c_avg = float(cv)
+    for comp_name in components_to_render:
+        # Match against assessment_scores
+        score_val = assessment_scores.get(comp_name)
+        if score_val is None:
+            # Try fuzzy match
+            comp_clean = comp_name.replace("—", "").replace("-", "").replace(" ", "").lower()
+            for k, v in assessment_scores.items():
+                k_clean = k.replace("—", "").replace("-", "").replace(" ", "").lower()
+                if comp_clean == k_clean or comp_clean in k_clean or k_clean in comp_clean:
+                    score_val = v
                     break
                     
-            subject_rows.append(SubjectScoreRow(
-                name=std_name,
-                score=score,
-                max_score=m_score,
-                score_pct=pct,
-                class_avg_pct=c_avg
-            ))
+        is_absent = (comp_name in absent_subjs) or (isinstance(score_val, str) and score_val.strip().upper() in ["A", "ABSENT"])
+        try:
+            score_num = float(score_val) if (score_val is not None and not is_absent) else 0.0
+        except (ValueError, TypeError):
+            score_num = 0.0
+            
+        m_score = float(max_marks.get(comp_name) or 25.0)
+        pct = round((score_num / m_score) * 100.0, 1) if m_score > 0 else 0.0
+        
+        c_avg = float(class_sub_avgs.get(comp_name, 70.0))
+        
+        subject_rows.append(SubjectScoreRow(
+            name=comp_name,
+            score=score_num,
+            max_score=m_score,
+            score_pct=pct if not is_absent else 0.0,
+            class_avg_pct=c_avg
+        ))
             
     has_subjects = len(subject_rows) > 0
     if has_subjects and total_score == 0:
         total_score = sum(s.score for s in subject_rows)
         total_max = sum(s.max_score for s in subject_rows)
-        overall_pct = round((total_score / total_max) * 100, 1)
+        overall_pct = round((total_score / total_max) * 100, 1) if total_max > 0 else 0.0
 
     # 4. Skill Matrix & Radar
     raw_skills = student_rec.get("skill_scores") or {}
@@ -592,51 +589,37 @@ def build_unified_student_data(student_rec: Dict[str, Any], batch_metrics: Optio
         or {}
     )
     
-    skill_display_map = [
-        ("Communication Skill", ["communication"]),
-        ("Leadership Skill", ["leadership"]),
-        ("Creativity", ["creativity"]),
-        ("Technical Skill", ["technical"]),
-        ("Analytical Skill", ["analytical"]),
-    ]
-    
     skill_rows: List[SkillMatrixRow] = []
     has_valid_skill_scores = False
     extracted_skill_nums: Dict[str, int] = {}
     
-    for disp_name, aliases in skill_display_map:
-        val = None
-        for k, v in raw_skills.items():
-            if any(a in k.lower() for a in aliases):
-                try:
-                    val = float(v)
-                    break
-                except (ValueError, TypeError):
-                    pass
-                    
-        avg_val = 7.0
-        for k, v in class_skills.items():
-            if any(a in k.lower() for a in aliases):
-                try:
-                    avg_val = float(v)
-                    break
-                except (ValueError, TypeError):
-                    pass
-                    
+    active_skills = list(raw_skills.keys()) if raw_skills else ["Communication Skill", "Leadership Skill", "Creativity", "Technical Skill", "Analytical Skill"]
+    
+    for s_name in active_skills:
+        val = raw_skills.get(s_name)
+        val_num = None
         if val is not None:
+            try:
+                val_num = float(val)
+            except (ValueError, TypeError):
+                pass
+                
+        c_avg = float(class_skills.get(s_name, 7.0))
+        
+        if val_num is not None:
             has_valid_skill_scores = True
-            int_val = int(round(val))
-            extracted_skill_nums[disp_name] = int_val
+            int_val = int(round(val_num))
+            extracted_skill_nums[s_name] = int_val
             skill_rows.append(SkillMatrixRow(
-                name=disp_name,
+                name=s_name,
                 student_score=f"{int_val} / 10",
-                class_avg=f"{avg_val:.1f}"
+                class_avg=f"{c_avg:.1f}"
             ))
         else:
             skill_rows.append(SkillMatrixRow(
-                name=disp_name,
-                student_score="—",
-                class_avg=f"{avg_val:.1f}"
+                name=s_name,
+                student_score="Not recorded",
+                class_avg=f"{c_avg:.1f}"
             ))
             
     # Add typing speed to skill table
@@ -684,17 +667,15 @@ def build_unified_student_data(student_rec: Dict[str, Any], batch_metrics: Optio
         else:
             placement.cohort_rank = "Placed"
             
-        if name == "Jayasree A":
-            placement.summary_sentence = (
-                "Jayasree A secured the highest starting salary within the Hospital Administration / "
-                "Front Office placement track of her batch, matched only by one peer (Yamuna K), "
-                "and outperformed by only two peers who were placed in an unrelated Sales Trainee track at a jewellery retailer."
-            )
+        if placement.salary_display and placement.salary_display not in ["Confidential", "—", "None", "-"]:
+            sal_part = f" with a starting package of {placement.salary_display}"
         else:
-            placement.summary_sentence = (
-                f"{name} secured placement as {placement.designation} at {placement.organization} "
-                f"with a starting package of {placement.salary_display}."
-            )
+            sal_part = ""
+            
+        c_rank_part = f" (Cohort salary rank: {placement.cohort_rank})" if placement.cohort_rank and placement.cohort_rank != "Placed" else ""
+        placement.summary_sentence = (
+            f"{name} secured placement as {placement.designation} at {placement.organization}{sal_part}{c_rank_part}."
+        )
     else:
         placement.is_available = False
         placement.designation = None

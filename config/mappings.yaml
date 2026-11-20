@@ -1,0 +1,43 @@
+# Value Mappings and Pretty Normalizations
+
+parents_meet:
+  rules:
+    - match: "attended"
+      display: "Attended"
+    - match: "met"
+      display: "Met parent"
+    - match: "spoke"
+      display: "Spoke over phone"
+    - match: "out of service"
+      display: "Not reachable"
+    - match: "not reachable"
+      display: "Not reachable"
+    - match: "switched off"
+      display: "Not reachable"
+  default: "Not recorded"
+
+subjects_display:
+  "Role play on Soft Skills": "Soft Skills Role Play"
+  "Role Play on Soft Skills": "Soft Skills Role Play"
+  "Basic Computer": "Basic Computer"
+  "Ms Word Theory": "MS Word — Theory"
+  "MS Word Theory": "MS Word — Theory"
+  "Ms Word Practical": "MS Word — Practical"
+  "MS Word Practical": "MS Word — Practical"
+  "Basic English": "Basic English"
+  "Ms Excel Theory": "MS Excel — Theory"
+  "MS Excel Theory": "MS Excel — Theory"
+  "Ms Excel Practical": "MS Excel — Practical"
+  "MS Excel Practical": "MS Excel — Practical"
+  "Business Writing": "Business Writing"
+  "Hospital Administration & Banking": "Hospital Admin & Banking"
+  "Hospital Administration and Banking": "Hospital Admin & Banking"
+
+organization_expansions:
+  "Kauvery": "Kauvery Hospital"
+  "Kauvery Hospital": "Kauvery Hospital"
+  "Kauvery Alwarpet": "Kauvery Hospital (Alwarpet)"
+  "Kauvery Vadapalani": "Kauvery Hospital (Vadapalani)"
+  "Kauvery Salem": "Kauvery Hospital (Salem)"
+  "Kauvery Trichy": "Kauvery Hospital (Trichy)"
+  "Kauvery Hosur": "Kauvery Hospital (Hosur)"

@@ -8,7 +8,7 @@ import logging
 from app.config import settings
 from app.database import SessionLocal, engine, init_db
 from app.models import Institute, JobRoleModel
-from app.routers import admin, auth_router, dashboard, jobs, reports, students, upload, ai as ai_router
+from app.routers import admin, auth_router, batches, dashboard, jobs, reports, students, upload, ai as ai_router
 from app.services.job_roles import _get_default_kauvery_roles
 
 logger = logging.getLogger("uvicorn.error")
@@ -112,4 +112,5 @@ app.include_router(students.router)
 app.include_router(dashboard.router)
 app.include_router(jobs.router)
 app.include_router(reports.router)
+app.include_router(batches.router)
 app.include_router(ai_router.router)

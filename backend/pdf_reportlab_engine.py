@@ -102,8 +102,8 @@ def _make_section_header(title: str, styles: dict) -> list:
     """Builds an uppercase purple section title with a thin gold underline."""
     p = Paragraph(f"<b>{title.upper()}</b>", styles["SectionTitle"])
     # Drawing gold line
-    d = Drawing(539, 3)
-    d.add(Line(0, 1.5, 539, 1.5, strokeColor=C_GOLD, strokeWidth=1.5))
+    d = Drawing(520, 3)
+    d.add(Line(0, 1.5, 520, 1.5, strokeColor=C_GOLD, strokeWidth=1.5))
     return [p, d, Spacer(1, 4)]
 
 
@@ -119,6 +119,16 @@ def _b64_to_rl_image(b64_str: str, width: float, height: float, h_align: str = "
         return img
     except Exception:
         return None
+
+
+def generate_student_reportlab_pdf(student_rec_or_data: Any, batch_name: str = "2023", batch_metrics: Optional[dict] = None) -> bytes:
+    """Convenience wrapper that accepts either a raw student dict or a UnifiedStudentReportData object."""
+    from pdf_generator import build_unified_student_data, UnifiedStudentReportData
+    if isinstance(student_rec_or_data, UnifiedStudentReportData):
+        data = student_rec_or_data
+    else:
+        data = build_unified_student_data(student_rec_or_data, batch_metrics=batch_metrics)
+    return generate_student_report_pdf_reportlab(data, batch_name=batch_name)
 
 
 def generate_student_report_pdf_reportlab(data: Any, batch_name: str = "2023") -> bytes:
@@ -458,10 +468,11 @@ def generate_student_report_pdf_reportlab(data: Any, batch_name: str = "2023") -
     # 3. Performance at a Glance (4 KPI Cards)
     story.extend(_make_section_header("Performance at a Glance", styles))
 
+    class_avg_score = (data.class_avg_overall_pct * data.total_max / 100.0) if data.total_max > 0 else 0.0
     kpi_card_1 = [
         Paragraph("TOTAL SCORE", styles["KPILabel"]),
         Paragraph(f"{data.total_score:g} / {data.total_max:g}", styles["KPIVal"]),
-        Paragraph(f"Avg: {data.class_avg_overall_pct:.1f}%", styles["KPISub"]),
+        Paragraph(f"Class Avg: {class_avg_score:.1f} / {data.total_max:g}", styles["KPISub"]),
     ]
     kpi_card_2 = [
         Paragraph("OVERALL %", styles["KPILabel"]),
@@ -588,7 +599,7 @@ def generate_student_report_pdf_reportlab(data: Any, batch_name: str = "2023") -
 
     # 1. Assessment Performance Bar Chart
     story.extend(_make_section_header("Assessment Performance (Student vs Class Average)", styles))
-    bar_img = _b64_to_rl_image(data.bar_chart_b64, width=539, height=130)
+    bar_img = _b64_to_rl_image(data.bar_chart_b64, width=520, height=130)
     if bar_img:
         story.append(bar_img)
     story.append(Spacer(1, 6))
@@ -702,7 +713,7 @@ def generate_student_report_pdf_reportlab(data: Any, batch_name: str = "2023") -
     else:
         missing_p_box = Table(
             [[Paragraph("Placement details not available", styles["ProfileValueMuted"])]],
-            colWidths=[539]
+            colWidths=[520]
         )
         missing_p_box.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), C_LAVENDER_BG),

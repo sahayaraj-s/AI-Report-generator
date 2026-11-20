@@ -52,10 +52,11 @@ def get_live_metrics_data() -> dict:
 
     if excel_path:
         try:
-            from loader import load_all_sheets
+            from workbook_parser import BatchWorkbookParser
             from metrics import build_full_metrics
-            loader_res = load_all_sheets(excel_path, os.path.basename(excel_path))
-            _METRICS_BUNDLE_CACHE = build_full_metrics(loader_res)
+            parser = BatchWorkbookParser(excel_path)
+            parsed = parser.parse_all()
+            _METRICS_BUNDLE_CACHE = build_full_metrics(parsed)
             return _METRICS_BUNDLE_CACHE
         except Exception as e:
             log.warning("Could not load from raw excel: %s", e)
@@ -96,9 +97,11 @@ def get_live_metrics_data() -> dict:
                     } if s.is_placed else None,
                     "other_skills": {},
                 }
+            overall_pcts = [s["overall_pct"] for s in per_student.values()]
+            avg_pct = round(sum(overall_pcts) / len(overall_pcts), 1) if overall_pcts else 75.0
             _METRICS_BUNDLE_CACHE = {
                 "per_student": per_student,
-                "class_avg_overall_pct": 71.1,
+                "class_avg_overall_pct": avg_pct,
             }
             db.close()
             return _METRICS_BUNDLE_CACHE
@@ -162,7 +165,7 @@ def retrieve_grounded_slice(query: str, bundle: dict) -> dict:
                 }
                 for s in matched_students.values()
             ],
-            "class_avg_overall_pct": bundle.get("class_avg_overall_pct", 71.1),
+            "class_avg_overall_pct": bundle.get("class_avg_overall_pct", 78.5),
         }
 
     # 2. Match placement / company query
@@ -262,7 +265,7 @@ def retrieve_grounded_slice(query: str, bundle: dict) -> dict:
     return {
         "query_type": "batch_summary",
         "student_count": len(per_student),
-        "class_avg_overall_pct": bundle.get("class_avg_overall_pct", 71.1),
+        "class_avg_overall_pct": bundle.get("class_avg_overall_pct", 78.5),
         "top_performers": [
             {"rank": s["class_rank"], "name": s["display_name"], "score": s["total_score"], "overall_pct": s["overall_pct"], "attendance": s["attendance_pct"]}
             for s in top_3
@@ -300,7 +303,7 @@ def answer_from_slice(query: str, context_slice: dict) -> str:
             res.append(
                 f"### {s['name']} - Rank #{s['class_rank']} of {s['class_size']}\n"
                 f"- **Overall Assessment Score:** {s['total_score']:g} / {s['total_max']:g} (**{s['overall_pct']:.1f}%**) "
-                f"[Class Avg: {context_slice.get('class_avg_overall_pct', 71.1):.1f}%]\n"
+                f"[Class Avg: {context_slice.get('class_avg_overall_pct', 78.5):.1f}%]\n"
                 f"- **Training Attendance:** {s['present_days']}/{s['total_training_days']} Days (**{s['attendance_pct']:.1f}%**)\n"
                 f"- **Placement Status:** {p_text}\n"
                 f"- **Typing Speed:** {s['typing_wpm']:.0f} WPM\n"

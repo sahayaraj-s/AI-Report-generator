@@ -1,0 +1,38 @@
+# Skill Remediation Actions and 30-Day Development Sprints
+
+remediations:
+  typing_speed:
+    gap_condition: "typing_speed < 25"
+    title: "Keyboard Speed & Accuracy Drills"
+    action: "Complete daily 30-minute touch-typing exercises on Keybr or TypingClub targeting 30+ WPM with >95% accuracy."
+    sprint_week: "Week 1 - 4: Daily 30 min timed typing drills"
+
+  ms_excel_practical:
+    gap_condition: "score_pct < 75"
+    title: "Practical Spreadsheet Simulation"
+    action: "Build hands-on outpatient billing registers, patient fee trackers, and master VLOOKUP/PivotTables."
+    sprint_week: "Week 2: Advanced formula modeling and summary reporting"
+
+  ms_word_practical:
+    gap_condition: "score_pct < 75"
+    title: "Documentation & Report Structuring"
+    action: "Practice creating standardized hospital discharge summaries, appointment letters, and tabular records."
+    sprint_week: "Week 1: Document formatting and mail-merge workflows"
+
+  business_writing:
+    gap_condition: "score_pct < 75"
+    title: "Corporate Correspondence & Email Etiquette"
+    action: "Draft formal administrative memos, appointment confirmations, and concise email responses."
+    sprint_week: "Week 3: Professional written correspondence drills"
+
+  hospital_admin_banking:
+    gap_condition: "score_pct < 75"
+    title: "Healthcare Administration Protocols"
+    action: "Review patient intake SOPs, insurance claim submission steps, and billing register reconciliation."
+    sprint_week: "Week 4: Front-office operational workflows and billing compliance"
+
+  communication_skill:
+    gap_condition: "score < 7.5"
+    title: "Professional Verbal Interaction"
+    action: "Engage in structured role-play scenarios simulating patient inquiries, escalation management, and phone etiquette."
+    sprint_week: "Week 1 - 2: Daily conversational simulation and role-play"

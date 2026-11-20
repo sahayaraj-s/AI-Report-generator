@@ -1,0 +1,56 @@
+# Career Roles Definition & Scoring Weights
+
+roles:
+  - id: "front_office_exec"
+    title: "Hospital Front Office / Guest Relations Executive"
+    description: "Engages directly with patients and visitors, manages outpatient registrations, appointments, and front-desk coordination."
+    weights:
+      communication_skill: 0.35
+      role_play_soft_skills: 0.25
+      hospital_admin_banking: 0.20
+      typing_speed: 0.10
+      basic_english: 0.10
+    benchmarks:
+      typing_wpm: 25.0
+      soft_skills_pct: 75.0
+      communication_out_of_10: 7.0
+
+  - id: "medical_records_billing"
+    title: "Medical Records / Patient Billing Executive"
+    description: "Handles patient data entry, insurance verification, discharge summaries, billing schedules, and health records management."
+    weights:
+      ms_excel_practical: 0.30
+      hospital_admin_banking: 0.25
+      typing_speed: 0.20
+      ms_word_practical: 0.15
+      technical_skill: 0.10
+    benchmarks:
+      typing_wpm: 28.0
+      excel_practical_pct: 80.0
+      analytical_out_of_10: 7.0
+
+  - id: "admin_data_specialist"
+    title: "Administrative Assistant / Data Entry Specialist"
+    description: "Maintains operational spreadsheets, formats official documentation, correspondence, and high-accuracy records."
+    weights:
+      ms_excel_practical: 0.30
+      ms_word_practical: 0.25
+      typing_speed: 0.25
+      business_writing: 0.20
+    benchmarks:
+      typing_wpm: 30.0
+      word_practical_pct: 80.0
+      technical_out_of_10: 7.0
+
+  - id: "operations_support_exec"
+    title: "Customer Support / Operations Executive"
+    description: "Coordinates day-to-day workflow communication, vendor queries, patient follow-ups, and department schedules."
+    weights:
+      communication_skill: 0.30
+      business_writing: 0.25
+      leadership_skill: 0.20
+      basic_computer: 0.15
+      role_play_soft_skills: 0.10
+    benchmarks:
+      typing_wpm: 25.0
+      communication_out_of_10: 7.5

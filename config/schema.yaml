@@ -1,0 +1,131 @@
+# Schema Definition for Batch Excel Ingestion
+# Tolerant matching for sheet names and column headers
+
+sheets:
+  master:
+    required: true
+    synonyms:
+      - "students details"
+      - "student details"
+      - "students"
+      - "master"
+      - "roster"
+      - "student list"
+    columns:
+      enrolment_no:
+        required: true
+        synonyms: ["enrolment no.", "enrolment no", "enrollment no", "reg no", "roll no", "s.no", "id"]
+      name:
+        required: true
+        synonyms: ["name", "student name", "candidate name", "full name"]
+      gender:
+        required: false
+        synonyms: ["gender", "sex"]
+      dob:
+        required: false
+        synonyms: ["dob", "date of birth", "birth date"]
+      age:
+        required: false
+        synonyms: ["age"]
+      qualification:
+        required: false
+        synonyms: ["qualification", "degree", "education", "course"]
+      college:
+        required: false
+        synonyms: ["college name", "college", "institution", "university"]
+      district:
+        required: false
+        synonyms: ["district", "current district", "present district"]
+      district_2:
+        required: false
+        synonyms: ["district 2", "permanent district", "home district", "native district"]
+      reference:
+        required: false
+        synonyms: ["reference", "referred by", "source"]
+
+  assessment:
+    required: true
+    synonyms:
+      - "assessment"
+      - "assessments"
+      - "scores"
+      - "marks"
+      - "subject-wise"
+      - "subject scores"
+    header_rows: 2  # Row 1: Component Name, Row 2: "Out of N" / Max Marks
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+    ignore_columns: ["s.no", "total", "percentage", "%", "average", "rank"]
+
+  attendance:
+    required: false
+    synonyms:
+      - "attendance"
+      - "daily attendance"
+      - "attendance sheet"
+    header_row: 2  # Skip merged group labels if present
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+    ignore_columns: ["s.no", "total", "present", "absent", "%", "percentage"]
+
+  skill_matrix:
+    required: false
+    synonyms:
+      - "skill matrix"
+      - "skills"
+      - "core skills"
+      - "core skill matrix"
+      - "skill scores"
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+    typing_column_synonyms: ["typing speed", "typing speed wpm", "typing wpm", "typing"]
+    ignore_columns: ["s.no", "total", "average"]
+
+  other_skills:
+    required: false
+    synonyms:
+      - "other skills"
+      - "extra skills"
+      - "sports activities"
+      - "hobbies"
+      - "co-curricular"
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+    sports_column_synonyms: ["sports activities", "sports", "games", "athletics"]
+    other_skills_column_synonyms: ["other skills", "extra skills", "additional skills", "hobbies"]
+
+  placement:
+    required: false
+    synonyms:
+      - "placement"
+      - "placements"
+      - "placement outcome"
+      - "placement details"
+      - "offers"
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+    designation_synonyms: ["designation", "role", "job title", "position"]
+    organization_synonyms: ["organization", "company", "employer", "hospital", "firm"]
+    salary_synonyms: ["salary", "package", "ctc", "stipend", "pay"]
+
+  hostelite:
+    required: false
+    synonyms:
+      - "hostelite"
+      - "hostelites"
+      - "hostel"
+      - "accommodation"
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+
+  parents_meet:
+    required: false
+    synonyms:
+      - "parents meet"
+      - "parent meet"
+      - "parents meeting"
+      - "parent meeting"
+      - "orientation"
+    name_column_synonyms: ["name", "student name", "candidate name", "student"]
+    remarks_column_synonyms: ["remarks", "status", "attendance", "notes", "parent remark"]
+
+  ignored_sheets:
+    synonyms:
+      - "uniform"
+      - "sizing"
+      - "measurement"
+      - "dress"

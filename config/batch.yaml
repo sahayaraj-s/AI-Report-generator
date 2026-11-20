@@ -1,0 +1,11 @@
+# Batch Configuration Defaults & Rules
+
+batch_defaults:
+  program_name: "Comprehensive Career Development Programme (CCDP)"
+  subline_template: "Comprehensive Career Development Programme (CCDP) · {batch_name}"
+  typing_target_wpm: 30.0
+  top_performer_max_rank: 3
+  use_sheet_age: true
+  anonymize_pii: true
+  min_attendance_threshold_pct: 85.0
+  good_attendance_threshold_pct: 95.0
