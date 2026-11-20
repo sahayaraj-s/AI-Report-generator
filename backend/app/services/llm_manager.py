@@ -94,8 +94,8 @@ def refresh_available_models() -> list[dict]:
             actions = m.supported_actions or []
             if "generateContent" in actions:
                 m_id = m.name.replace("models/", "") if m.name else ""
-                # Filter out retired models
-                if any(m_id.startswith(p) for p in ("gemini-1.5", "gemini-2.0")):
+                # Filter out legacy/text-only models
+                if any(m_id.startswith(p) for p in ("gemini-1.0", "text-", "chat-", "embedding")):
                     continue
                 if m_id == "gemini-2.5-flash-image":
                     continue
