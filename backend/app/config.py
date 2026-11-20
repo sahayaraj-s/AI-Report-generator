@@ -14,11 +14,11 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     # Model configuration with auto-fallback chain
-    gemini_model: str = "gemini-3.6-flash"
-    gemini_model_default: str = "gemini-3.6-flash"
-    gemini_model_fast: str = "gemini-3.5-flash-lite"
-    gemini_model_deep: str = "gemini-3.8-flash"
-    gemini_fallbacks: str = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_model_default: str = "gemini-2.5-flash"
+    gemini_model_fast: str = "gemini-2.5-flash"
+    gemini_model_deep: str = "gemini-2.5-pro"
+    gemini_fallbacks: str = "gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash"
     gemini_timeout_seconds: float = 20.0
     enable_image_gen: bool = False
     rate_limit_per_minute: int = 60

@@ -168,102 +168,8 @@ def student_report_pdf(student_id: int, db: Session = Depends(get_db), admin=Dep
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     except Exception as exc:
-        print("Live PDF generator notice:", exc)
-
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
-    styles, title_style, h2, h3, body, small = _get_styles()
-
-    story: list[Any] = [
-        Paragraph("Skill Bay Academy (Kauvery Hospital) — CCDP Placement Report", title_style),
-        Spacer(1, 0.3 * cm),
-        Paragraph(f"{student.name}  ·  {student.roll_number or '—'}  ·  Batch: {student.batch.name if student.batch else 'CCDP 1'}", styles["Heading3"]),
-        Spacer(1, 0.5 * cm),
-    ]
-
-    summary_table = Table(
-        [
-            ["Overall Score", f"{analysis.overall_score}/100"],
-            ["Placement Readiness", f"{analysis.placement_readiness_pct}%"],
-            ["Attendance", f"{student.attendance_pct}%"],
-            ["Predicted Salary Range", analysis.salary_range],
-            ["Interview Readiness", analysis.interview_readiness],
-        ],
-        colWidths=[6 * cm, 9 * cm],
-    )
-    summary_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, -1), BRAND_PRIMARY),
-                ("TEXTCOLOR", (0, 0), (0, -1), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
-    story.append(summary_table)
-    story.append(Spacer(1, 0.6 * cm))
-
-    story.append(Paragraph("AI Summary", h2))
-    story.append(Paragraph(analysis.ai_summary or "—", body))
-    story.append(Spacer(1, 0.4 * cm))
-
-    strengths = json.loads(str(analysis.strengths or "[]"))
-    weaknesses = json.loads(str(analysis.weaknesses or "[]"))
-    story.append(Paragraph("Strengths", h2))
-    story.append(Paragraph(", ".join(s.title() for s in strengths) or "—", body))
-    story.append(Spacer(1, 0.3 * cm))
-    story.append(Paragraph("Areas to Improve", h2))
-    story.append(Paragraph(", ".join(w.title() for w in weaknesses) or "—", body))
-    story.append(Spacer(1, 0.4 * cm))
-
-    roles = json.loads(str(analysis.recommended_roles or "[]"))
-    story.append(Paragraph("Suitable Job Roles", h2))
-    if roles:
-        role_table = Table(
-            [["Role", "Confidence", "Fit Tier"]] + [[r["role"], f"{r['confidence']}%", r.get("fit_tier", "—")] for r in roles],
-            colWidths=[7 * cm, 4 * cm, 4 * cm],
-        )
-        role_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), BRAND_YELLOW),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                    ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ]
-            )
-        )
-        story.append(role_table)
-    story.append(Spacer(1, 0.5 * cm))
-
-    story.append(Paragraph("Learning Roadmap", h2))
-    for line in (analysis.learning_roadmap or "").split("\n"):
-        if line.strip():
-            story.append(Paragraph(line, body))
-    story.append(Spacer(1, 0.3 * cm))
-
-    story.append(Paragraph("30-Day Plan", h2))
-    for line in (analysis.thirty_day_plan or "").split("\n"):
-        if line.strip():
-            story.append(Paragraph(line, body))
-    story.append(Spacer(1, 0.3 * cm))
-
-    certs = json.loads(str(analysis.recommended_certifications or "[]"))
-    story.append(Paragraph("Recommended Certifications", h2))
-    story.append(Paragraph(", ".join(certs) or "—", body))
-
-    doc.build(story)
-    buffer.seek(0)
-
-    filename = f"{student.name.replace(' ', '_')}_placement_report.pdf"
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+        logger.error(f"Error generating PDF report for student {student_id}: {exc}", exc_info=True)
+        raise HTTPException(500, f"Failed to generate report for {student.name}: {str(exc)}")
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +211,7 @@ def batch_report_pdf(
     batch_id: int | None = None,
     batch: str = "",
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    admin=Depends(get_optional_admin),
 ):
     batch_obj = None
     if batch_id:
@@ -441,7 +347,7 @@ def sanitize_csv_cell(value: Any) -> Any:
 def batch_report_csv(
     batch: str = "",
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    admin=Depends(get_optional_admin),
 ):
     q = db.query(Student)
     if batch:
@@ -524,7 +430,7 @@ def _build_match_matrix(db: Session):
 
 @router.get("/match/pdf")
 @router.get("/match-matrix/pdf")
-def match_matrix_pdf(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def match_matrix_pdf(db: Session = Depends(get_db), admin=Depends(get_optional_admin)):
     active_roles, students, matrix = _build_match_matrix(db)
     if not active_roles:
         raise HTTPException(400, "No active job roles configured")
@@ -599,7 +505,7 @@ def match_matrix_pdf(db: Session = Depends(get_db), admin=Depends(get_current_ad
 
 @router.get("/match/csv")
 @router.get("/match-matrix/csv")
-def match_matrix_csv(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def match_matrix_csv(db: Session = Depends(get_db), admin=Depends(get_optional_admin)):
     active_roles, students, matrix = _build_match_matrix(db)
 
     output = io.StringIO()
@@ -632,7 +538,7 @@ def match_matrix_csv(db: Session = Depends(get_db), admin=Depends(get_current_ad
 # ---------------------------------------------------------------------------
 
 @router.get("/institute/pdf")
-def institute_report_pdf(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def institute_report_pdf(db: Session = Depends(get_db), admin=Depends(get_optional_admin)):
     from app.models import Institute
 
     institute = db.query(Institute).first()

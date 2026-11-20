@@ -79,6 +79,17 @@ def on_startup():
                     department=r.department,
                 ))
             db.commit()
+
+        # Seed batch and students if database is empty
+        from app.models import Student
+        if db.query(Student).count() == 0:
+            logger.info("Database has 0 students. Auto-seeding verified CCDP 2 batch data...")
+            try:
+                import import_ccdp2
+                import_ccdp2.seed_database_from_excel(db_session=db)
+                logger.info("Auto-seeding completed successfully.")
+            except Exception as s_err:
+                logger.warning(f"Auto-seeding notice: {s_err}")
     finally:
         db.close()
 

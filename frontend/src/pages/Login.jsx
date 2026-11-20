@@ -20,6 +20,7 @@ export default function Login() {
   const {
     user,
     loginWithEmail,
+    loginDemoAdmin,
     authError,
   } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -204,6 +205,35 @@ export default function Login() {
                   </>
                 )}
               </button>
+
+              {/* Demo Admin Quick Access */}
+              <div className="pt-2">
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-surface-border"></div>
+                  <span className="flex-shrink mx-2 text-[10px] text-ink-faint uppercase tracking-wider">or fast access</span>
+                  <div className="flex-grow border-t border-surface-border"></div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await loginDemoAdmin();
+                      navigate("/");
+                    } catch (err) {
+                      setError(err.message || "Could not sign in as Demo Admin.");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className="w-full mt-1.5 flex items-center justify-center gap-2 rounded-xl bg-surface-high hover:bg-surface-container text-ink font-medium py-2.5 text-xs border border-surface-border transition-all hover:border-brand-purple/40"
+                >
+                  <ShieldCheck size={15} className="text-brand-purple" />
+                  <span>Demo Admin 1-Click Access</span>
+                </button>
+              </div>
             </form>
           </div>
 

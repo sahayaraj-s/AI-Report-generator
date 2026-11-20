@@ -389,14 +389,15 @@ def answer_from_slice(query: str, context_slice: dict) -> str:
 # ---------------------------------------------------------------------------
 
 async def _gemini_grounded_chat(context_slice: dict, user_message: str) -> str | None:
-    api_key = settings.gemini_api_key
-    if not api_key or not api_key.startswith("AIza"):
+    api_key = (settings.gemini_api_key or "").strip()
+    if not api_key:
         return None
 
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{settings.gemini_model}:generateContent?key={api_key}"
-    )
+    models_to_try = [settings.gemini_model]
+    for fb in settings.gemini_fallbacks.split(","):
+        fb_clean = fb.strip()
+        if fb_clean and fb_clean not in models_to_try:
+            models_to_try.append(fb_clean)
 
     system_instruction = (
         "You are SkillBay AI, the intelligent placement assistant for Skill Bay Academy. "
@@ -423,15 +424,27 @@ async def _gemini_grounded_chat(context_slice: dict, user_message: str) -> str |
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600},
     }
 
-    try:
-        timeout_val = getattr(settings, "gemini_timeout_seconds", 8.0)
-        async with httpx.AsyncClient(timeout=timeout_val) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as exc:
-        log.warning(f"Gemini grounded chat error: {exc}")
+    timeout_val = getattr(settings, "gemini_timeout_seconds", 8.0)
+    for model_name in models_to_try:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model_name}:generateContent?key={api_key}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=timeout_val) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates and "content" in candidates[0]:
+                        parts = candidates[0]["content"].get("parts", [])
+                        if parts and "text" in parts[0]:
+                            return parts[0]["text"].strip()
+                else:
+                    log.warning(f"Gemini API returned status {resp.status_code} for model {model_name}: {resp.text[:200]}")
+        except Exception as exc:
+            log.warning(f"Gemini model {model_name} error: {exc}")
+
     return None
 
 

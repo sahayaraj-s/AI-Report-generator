@@ -120,28 +120,41 @@ async def generate_gemini_report(
         f"Skill Gaps: {json.dumps(skill_gaps)}"
     )
 
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
-    )
+    api_key = (settings.gemini_api_key or "").strip()
+    if not api_key:
+        return generate_local_report(student_name, overall, strengths, weaknesses, top_roles)
+
+    models_to_try = [settings.gemini_model]
+    for fb in settings.gemini_fallbacks.split(","):
+        fb_clean = fb.strip()
+        if fb_clean and fb_clean not in models_to_try:
+            models_to_try.append(fb_clean)
+
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    timeout_val = getattr(settings, "gemini_timeout_seconds", 8.0)
 
-    if not settings.gemini_api_key or not settings.gemini_api_key.startswith("AIza"):
-        return generate_local_report(student_name, overall, strengths, weaknesses, top_roles)
+    for model_name in models_to_try:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model_name}:generateContent?key={api_key}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=timeout_val) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates and "content" in candidates[0]:
+                        parts = candidates[0]["content"].get("parts", [])
+                        if parts and "text" in parts[0]:
+                            text = parts[0]["text"].strip().strip("`").replace("json\n", "", 1)
+                            parsed = json.loads(text)
+                            parsed["ai_source"] = "gemini"
+                            return parsed
+        except Exception:
+            continue
 
-    try:
-        timeout_val = getattr(settings, "gemini_timeout_seconds", 8.0)
-        async with httpx.AsyncClient(timeout=timeout_val) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            text = text.strip().strip("`").replace("json\n", "", 1)
-            parsed = json.loads(text)
-            parsed["ai_source"] = "gemini"
-            return parsed
-    except Exception:
-        return generate_local_report(student_name, overall, strengths, weaknesses, top_roles)
+    return generate_local_report(student_name, overall, strengths, weaknesses, top_roles)
 
 
 async def generate_ai_report(
@@ -151,7 +164,7 @@ async def generate_ai_report(
     weaknesses: list,
     top_roles: list,
 ) -> dict:
-    if settings.gemini_api_key and settings.gemini_api_key.startswith("AIza"):
+    if settings.gemini_api_key and settings.gemini_api_key.strip():
         return await generate_gemini_report(student_name, overall, strengths, weaknesses, top_roles)
     return generate_local_report(student_name, overall, strengths, weaknesses, top_roles)
 

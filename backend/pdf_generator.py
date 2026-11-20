@@ -1878,10 +1878,20 @@ def generate_student_report_pdf(student_rec: Dict[str, Any], batch_name: str = "
     """
     Primary interface called by the FastAPI server and batch scripts.
     Generates the exact 3-page A4 PDF report matching the reference design.
+    Tries Headless Chromium Playwright first; seamlessly falls back to pure Python
+    ReportLab engine if Chromium is missing or headless execution fails on Linux/Render.
     """
     unified_data = build_unified_student_data(student_rec, batch_metrics)
-    html = render_report_html(unified_data, batch_name=batch_name)
-    return convert_html_to_pdf_bytes(html)
+    try:
+        html = render_report_html(unified_data, batch_name=batch_name)
+        return convert_html_to_pdf_bytes(html)
+    except Exception as exc:
+        logger.warning(
+            f"Chromium Playwright generation failed or unavailable ({exc}). "
+            "Falling back to high-fidelity ReportLab engine."
+        )
+        from pdf_reportlab_engine import generate_student_report_pdf_reportlab
+        return generate_student_report_pdf_reportlab(unified_data, batch_name=batch_name)
 
 # ---------------------------------------------------------------------------
 # 8. Batch Excel File Discoverer & Loader
